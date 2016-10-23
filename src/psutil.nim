@@ -18,8 +18,6 @@ Linux To Do -
     wait_procs(procs, timeout=None, callback=None)
 ]##
 
-import tables
-
 when defined(posix):
     import psutil_posix
 
