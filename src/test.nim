@@ -1,3 +1,5 @@
+import tables
+
 import psutil
 
 echo net_if_addrs()
