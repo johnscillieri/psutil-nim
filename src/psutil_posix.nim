@@ -62,6 +62,8 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
 
     elif defined(linux) and family == AF_PACKET:
         var hw_address = cast[ptr sockaddr_ll](address)
+        # TODO - this is going to break on non-Ethernet addresses (e.g. mac firewire - 8 bytes)
+        # psutil actually handles this, i just wanted to test that it was working
         return "$1:$2:$3:$4:$5:$6".format( hw_address.sll_addr[0].int.toHex(2),
                                            hw_address.sll_addr[1].int.toHex(2),
                                            hw_address.sll_addr[2].int.toHex(2),
