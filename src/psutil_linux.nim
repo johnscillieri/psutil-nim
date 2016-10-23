@@ -1,4 +1,5 @@
 import os
+import sequtils
 import strutils
 import posix
 
@@ -70,3 +71,8 @@ proc users*(): seq[User] =
         ut = getutent()
 
     endutent()
+
+proc pids*(): seq[int] =
+    ## Returns a list of PIDs currently running on the system.
+    let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
+    return mapIt( filterIt( all_files, isdigit( it.path ) ), parseInt( it.path ) )

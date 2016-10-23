@@ -13,7 +13,6 @@ Linux To Do -
     net_io_counters(pernic=False)
     net_connections(kind='inet')
     net_if_stats()
-    pids()
     pid_exists(pid)
     process_iter()
     wait_procs(procs, timeout=None, callback=None)
@@ -27,6 +26,7 @@ when defined(posix):
 when defined(linux):
     import psutil_linux
 
-echo net_if_addrs()
-echo boot_time()
-echo users()
+export net_if_addrs
+export boot_time
+export users
+export pids
