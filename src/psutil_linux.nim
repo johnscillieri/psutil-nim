@@ -4,18 +4,9 @@ import strutils
 import posix
 
 import types
+import psutil_posix
 
 const PROCFS_PATH = "/proc"
-
-proc boot_time*(): float =
-    ## Return the system boot time expressed in seconds since the epoch
-    let stat_path = PROCFS_PATH / "stat"
-    for line in stat_path.lines:
-        if line.startswith("btime"):
-            return line.strip().split( " " )[1].parseFloat()
-
-    raise newException(OSError, "line 'btime' not found in $1" % stat_path)
-
 
 const UT_LINESIZE = 32
 const UT_NAMESIZE = 32
@@ -47,6 +38,43 @@ proc getutent(): ptr utmp {.header: "<utmp.h>".}
 proc setutent() {.header: "<utmp.h>".}
 proc endutent() {.header: "<utmp.h>".}
 
+
+proc boot_time*(): float =
+    ## Return the system boot time expressed in seconds since the epoch
+    let stat_path = PROCFS_PATH / "stat"
+    for line in stat_path.lines:
+        if line.startswith("btime"):
+            return line.strip().split( " " )[1].parseFloat()
+
+    raise newException(OSError, "line 'btime' not found in $1" % stat_path)
+
+
+proc pids*(): seq[int] =
+    ## Returns a list of PIDs currently running on the system.
+    let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
+    return mapIt( filterIt( all_files, isdigit( it.path ) ), parseInt( it.path ) )
+
+
+proc pid_exists*( pid: int ): bool =
+    ## Check For the existence of a unix pid
+
+    let exists = psutil_posix.pid_exists( pid )
+    if not exists: return false
+
+    try:
+        # Note: already checked that this is faster than using a regular expr.
+        # Also (a lot) faster than doing 'return pid in pids()'
+        let status_path = PROCFS_PATH / $pid / "status"
+        for line in status_path.lines:
+            if line.startswith( "Tgid:" ):
+                let tgid = parseInt( line.split()[1] )
+                return tgid == pid
+
+        raise newException(OSError, "Tgid line not found in " & status_path)
+    except:
+        return pid in pids()
+
+
 proc users*(): seq[User] =
     result = newSeq[User]()
 
@@ -71,8 +99,3 @@ proc users*(): seq[User] =
         ut = getutent()
 
     endutent()
-
-proc pids*(): seq[int] =
-    ## Returns a list of PIDs currently running on the system.
-    let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
-    return mapIt( filterIt( all_files, isdigit( it.path ) ), parseInt( it.path ) )

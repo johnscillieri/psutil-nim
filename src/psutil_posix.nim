@@ -31,9 +31,80 @@ type sockaddr_ll = object
 proc getifaddrs( ifap: var ptr ifaddrs ): int
     {.header: "<ifaddrs.h>", importc: "getifaddrs".}
 
-
 proc freeifaddrs( ifap: ptr ifaddrs ): void
     {.header: "<ifaddrs.h>", importc: "freeifaddrs".}
+
+proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string
+
+
+proc pid_exists*( pid: int ): bool =
+    ## Check whether pid exists in the current process table.
+    if pid == 0:
+        # According to "man 2 kill" PID 0 has a special meaning:
+        # it refers to <<every process in the process group of the
+        # calling process>> so we don't want to go any further.
+        # If we get here it means this UNIX platform *does* have
+        # a process with id 0.
+        return true
+
+    let ret_code = kill( pid, 0 )
+
+    if ret_code == 0: return true
+
+    # ESRCH == No such process
+    if errno == ESRCH: return false
+
+    # EPERM clearly means there's a process to deny access to
+    elif errno == EPERM: return true
+
+    # According to "man 2 kill" possible error values are
+    # (EINVAL, EPERM, ESRCH) therefore we should never get
+    # here. If we do let's be explicit in considering this
+    # an error.
+    else: raise newException(OSError, "Unknown error from pid_exists: " & $errno )
+
+
+proc net_if_addrs*(): Table[string, seq[Address]] =
+    ## Return the addresses associated to each NIC (network interface card)
+    ##   installed on the system as a table whose keys are the NIC names and
+    ##   value is a seq of Addresses for each address assigned to the NIC.
+    ##
+    ##   *family* can be either AF_INET, AF_INET6, AF_LINK, which refers to a MAC address.
+    ##   *address* is the primary address and it is always set.
+    ##   *netmask*, *broadcast* and *ptp* may be ``None``.
+    ##   *ptp* stands for "point to point" and references the destination address on a point to point interface (typically a VPN).
+    ##   *broadcast* and *ptp* are mutually exclusive.
+    ##   *netmask*, *broadcast* and *ptp* are not supported on Windows and are set to nil.
+    var interfaces : ptr ifaddrs
+    var current : ptr ifaddrs
+    let ret_code = getifaddrs( interfaces )
+    if ret_code == -1:
+        echo( "net_if_addrs error: ", strerror( errno ) )
+        return result
+
+    result = initTable[string, seq[Address]]()
+
+    current = interfaces
+    while current != nil:
+        let name = $current.ifa_name
+        let family = current.ifa_addr.sa_family
+        let address = psutil_convert_ipaddr( current.ifa_addr, family )
+        let netmask = psutil_convert_ipaddr( current.ifa_netmask, family )
+        let bc_or_ptp = psutil_convert_ipaddr( current.ifu_broadaddr, family )
+        let broadcast = if (current.ifa_flags and IFF_BROADCAST) != 0: bc_or_ptp else: nil
+        # ifu_broadcast and ifu_ptp are a union in C, but we don't really care what C calls it
+        let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: nil
+
+        if not( name in result ): result[name] = newSeq[Address]()
+        result[name].add( Address( family: family,
+                                   address: address,
+                                   netmask: netmask,
+                                   broadcast: broadcast,
+                                   ptp: ptp ) )
+
+        current = current.pifaddrs
+
+    freeifaddrs( interfaces )
 
 
 proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
@@ -81,46 +152,3 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
     else:
         # unknown family
         return nil
-
-
-proc net_if_addrs*(): Table[string, seq[Address]] =
-    ## Return the addresses associated to each NIC (network interface card)
-    ##   installed on the system as a table whose keys are the NIC names and
-    ##   value is a seq of Addresses for each address assigned to the NIC.
-    ##
-    ##   *family* can be either AF_INET, AF_INET6, AF_LINK, which refers to a MAC address.
-    ##   *address* is the primary address and it is always set.
-    ##   *netmask*, *broadcast* and *ptp* may be ``None``.
-    ##   *ptp* stands for "point to point" and references the destination address on a point to point interface (typically a VPN).
-    ##   *broadcast* and *ptp* are mutually exclusive.
-    ##   *netmask*, *broadcast* and *ptp* are not supported on Windows and are set to nil.
-    var interfaces : ptr ifaddrs
-    var current : ptr ifaddrs
-    let ret_code = getifaddrs( interfaces )
-    if ret_code == -1:
-        echo( "net_if_addrs error: ", strerror( errno ) )
-        return result
-
-    result = initTable[string, seq[Address]]()
-
-    current = interfaces
-    while current != nil:
-        let name = $current.ifa_name
-        let family = current.ifa_addr.sa_family
-        let address = psutil_convert_ipaddr( current.ifa_addr, family )
-        let netmask = psutil_convert_ipaddr( current.ifa_netmask, family )
-        let bc_or_ptp = psutil_convert_ipaddr( current.ifu_broadaddr, family )
-        let broadcast = if (current.ifa_flags and IFF_BROADCAST) != 0: bc_or_ptp else: nil
-        # ifu_broadcast and ifu_ptp are a union in C, but we don't really care what C calls it
-        let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: nil
-
-        if not( name in result ): result[name] = newSeq[Address]()
-        result[name].add( Address( family: family,
-                                   address: address,
-                                   netmask: netmask,
-                                   broadcast: broadcast,
-                                   ptp: ptp ) )
-
-        current = current.pifaddrs
-
-    freeifaddrs( interfaces )
