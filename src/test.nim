@@ -1,13 +1,13 @@
-import tables
-
 import psutil
 
-echo "net_if_addrs:\n", net_if_addrs()
+template echo_proc( x: untyped ) =
+    echo "\n", astToStr(x), ": ", x
 
-echo "\nboot_time: ", boot_time()
-
-echo "\nusers:\n", users()
-
-echo "\npids:\n", pids()
-
-echo "\npid_exists: 1=", pid_exists(1), " 999=", pid_exists(999)
+echo_proc( net_if_addrs() )
+echo_proc( boot_time() )
+echo_proc( users() )
+echo_proc( pids() )
+echo_proc( cpu_times() )
+echo_proc( cpu_stats() )
+echo_proc( pid_exists(1) )
+echo_proc( pid_exists(999) )

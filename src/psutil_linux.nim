@@ -13,6 +13,8 @@ const UT_NAMESIZE = 32
 const UT_HOSTSIZE = 256
 const USER_PROCESS = 7  # Normal process.
 
+let CLOCK_TICKS = sysconf( SC_CLK_TCK )
+
 type timeval_32 = object
     tv_sec: int32  # Seconds.
     tv_usec: int32 # Microseconds.
@@ -99,3 +101,47 @@ proc users*(): seq[User] =
         ut = getutent()
 
     endutent()
+
+
+proc cpu_times*(): tuple[user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice : float] =
+    # Return a tuple representing the following system-wide CPU times:
+    # (user, nice, system, idle, iowait, irq, softirq [steal, [guest,
+    #  [guest_nice]]])
+    # Last 3 fields may not be available on all Linux kernel versions.
+
+    var values: seq[string]
+    for line in lines( PROCFS_PATH / "stat" ):
+        values = line.split()
+        break
+
+    var fields = values[2..<len(values)]
+    let times = mapIt( fields, parseFloat(it) / CLOCK_TICKS.float)
+    if len(times) >= 7:
+        result.user = times[0]
+        result.nice = times[1]
+        result.system = times[2]
+        result.idle = times[3]
+        result.iowait = times[4]
+        result.irq = times[5]
+        result.softirq = times[6]
+    if len(times) >= 8:
+        result.steal = times[7]
+    if len(times) >= 9:
+        result.guest = times[8]
+    if len(times) >= 10:
+        result.guest_nice = times[9]
+
+
+proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts, syscalls: int] =
+    var ctx_switches, interrupts, soft_interrupts = 0
+    for line in lines( PROCFS_PATH / "stat" ):
+        if line.startswith("ctxt"):
+            ctx_switches = parseint( line.split()[1] )
+        elif line.startswith("intr"):
+            interrupts = parseint( line.split()[1] )
+        elif line.startswith("softirq"):
+            soft_interrupts = parseint( line.split()[1] )
+        if ctx_switches != 0 and soft_interrupts != 0 and interrupts != 0:
+            break
+    # syscalls = 0
+    return (ctx_switches, interrupts, soft_interrupts, 0)

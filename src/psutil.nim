@@ -16,6 +16,7 @@ Linux To Do -
     process_iter()
     wait_procs(procs, timeout=None, callback=None)
 ]##
+import tables
 
 when defined(posix):
     import psutil_posix
@@ -42,8 +43,11 @@ proc pid_exists*( pid: int ): bool =
     else:
         return platform.pid_exists(pid)
 
+export tables
 
 export net_if_addrs
 export boot_time
 export users
 export pids
+export cpu_times
+export cpu_stats
