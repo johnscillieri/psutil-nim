@@ -3,8 +3,6 @@ Linux To Do -
     cpu_times(percpu=False)
     cpu_percent(interval=None, percpu=False)
     cpu_times_percent(interval=None, percpu=False)
-    cpu_count(logical=True)
-    cpu_stats()
     virtual_memory()
     swap_memory()
     disk_partitions(all=False)
@@ -24,7 +22,7 @@ when defined(posix):
 when defined(linux):
     import psutil_linux as platform
 
-
+################################################################################
 proc pid_exists*( pid: int ): bool =
     ## Return True if given PID exists in the current process list.
     ## This is faster than doing "pid in psutil.pids()" and should be preferred.
@@ -43,6 +41,17 @@ proc pid_exists*( pid: int ): bool =
     else:
         return platform.pid_exists(pid)
 
+
+proc cpu_count*(logical=true): int =
+    # Return the number of logical CPUs in the system.
+    # If logical is False return the number of physical cores only
+    # (e.g. hyper thread CPUs are excluded).
+    # Return 0 if undetermined.
+    if logical: platform.cpu_count_logical()
+    else: platform.cpu_count_physical()
+
+
+################################################################################
 export tables
 
 export net_if_addrs
@@ -51,3 +60,4 @@ export users
 export pids
 export cpu_times
 export cpu_stats
+export cpu_count
