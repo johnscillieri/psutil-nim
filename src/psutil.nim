@@ -1,6 +1,5 @@
 ##[
 Linux To Do -
-    cpu_times(percpu=False)
     cpu_percent(interval=None, percpu=False)
     cpu_times_percent(interval=None, percpu=False)
     virtual_memory()
@@ -21,6 +20,7 @@ when defined(posix):
 
 when defined(linux):
     import psutil_linux as platform
+
 
 ################################################################################
 proc pid_exists*( pid: int ): bool =
@@ -59,5 +59,6 @@ export boot_time
 export users
 export pids
 export cpu_times
+export per_cpu_times
 export cpu_stats
 export cpu_count

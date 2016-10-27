@@ -8,6 +8,8 @@ import tables
 import types
 import psutil_posix
 
+
+################################################################################
 const PROCFS_PATH = "/proc"
 
 const UT_LINESIZE = 32
@@ -38,6 +40,11 @@ type utmp = object
     ut_addr_v6: array[4, int32] # Internet address of remote host.
     unused: array[20, char]     # Reserved for future use.
 
+type cpu_times_t = tuple[ user, nice, system, idle, iowait,
+                          irq, softirq, steal, guest, guest_nice : float ]
+
+
+################################################################################
 proc getutent(): ptr utmp {.header: "<utmp.h>".}
 proc setutent() {.header: "<utmp.h>".}
 proc endutent() {.header: "<utmp.h>".}
@@ -105,19 +112,9 @@ proc users*(): seq[User] =
     endutent()
 
 
-proc cpu_times*(): tuple[user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice : float] =
-    # Return a tuple representing the following system-wide CPU times:
-    # (user, nice, system, idle, iowait, irq, softirq [steal, [guest,
-    #  [guest_nice]]])
-    # Last 3 fields may not be available on all Linux kernel versions.
-
-    var values: seq[string]
-    for line in lines( PROCFS_PATH / "stat" ):
-        values = line.split()
-        break
-
-    var fields = values[2..<len(values)]
-    let times = mapIt( fields, parseFloat(it) / CLOCK_TICKS.float)
+proc parse_cpu_time_line( text: string ): cpu_times_t =
+    let values = filterIt( text.split(), it.strip() != "" )
+    let times = mapIt( values[1..<len(values)], parseFloat(it) / CLOCK_TICKS.float)
     if len(times) >= 7:
         result.user = times[0]
         result.nice = times[1]
@@ -132,6 +129,29 @@ proc cpu_times*(): tuple[user, nice, system, idle, iowait, irq, softirq, steal, 
         result.guest = times[8]
     if len(times) >= 10:
         result.guest_nice = times[9]
+
+
+proc cpu_times*(): cpu_times_t =
+    # Return a tuple representing the following system-wide CPU times:
+    # (user, nice, system, idle, iowait, irq, softirq [steal, [guest,
+    #  [guest_nice]]])
+    # Last 3 fields may not be available on all Linux kernel versions.
+    for line in lines( PROCFS_PATH / "stat" ):
+        result = parse_cpu_time_line( line )
+        break
+
+
+proc per_cpu_times*(): seq[cpu_times_t] =
+    ## Return a list of tuples representing the CPU times for every
+    ## CPU available on the system.
+    result = newSeq[cpu_times_t]()
+    for line in lines( PROCFS_PATH / "stat" ):
+        if not line.startswith("cpu"): continue
+        let entry = parse_cpu_time_line( line )
+        result.add( entry )
+    # get rid of the first line which refers to system wide CPU stats
+    result.delete(0)
+    return result
 
 
 proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts, syscalls: int] =
