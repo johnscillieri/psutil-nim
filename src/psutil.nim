@@ -1,6 +1,5 @@
 ##[
 Linux To Do -
-    cpu_percent(interval=None, percpu=False)
     cpu_times_percent(interval=None, percpu=False)
     virtual_memory()
     swap_memory()
@@ -13,7 +12,14 @@ Linux To Do -
     process_iter()
     wait_procs(procs, timeout=None, callback=None)
 ]##
+import math
+import os
+import sequtils
+import strutils
 import tables
+
+
+import types
 
 when defined(posix):
     import psutil_posix
@@ -49,6 +55,108 @@ proc cpu_count*(logical=true): int =
     # Return 0 if undetermined.
     if logical: platform.cpu_count_logical()
     else: platform.cpu_count_physical()
+
+
+var g_last_cpu_times: CPUTimes
+var g_last_per_cpu_times: seq[CPUTimes]
+try:
+    g_last_cpu_times = cpu_times()
+    g_last_per_cpu_times = per_cpu_times()
+except IOError:
+    discard
+
+
+proc calculate(t1, t2: CPUTimes): float =
+    let t1_all = t1.user + t1.nice + t1.system + t1.idle + t1.iowait +
+                 t1.irq + t1.softirq + t1.steal + t1.guest + t1.guest_nice
+    let t1_busy = t1_all - t1.idle
+
+    let t2_all = t2.user + t2.nice + t2.system + t2.idle + t2.iowait +
+                 t2.irq + t2.softirq + t2.steal + t2.guest + t2.guest_nice
+    let t2_busy = t2_all - t2.idle
+
+    # this usually indicates a float precision issue
+    if t2_busy <= t1_busy:
+        return 0.0
+
+    let busy_delta = t2_busy - t1_busy
+    let all_delta = t2_all - t1_all
+    let busy_perc = ( busy_delta / all_delta ) * 100
+    return round( busy_perc, 1 )
+
+
+proc cpu_percent*( interval=0.0 ): float =
+    ## Return a float representing the current system-wide CPU utilization as a percentage.
+    ##
+    ## When interval is > 0.0 compares system CPU times elapsed before
+    ## and after the interval (blocking).
+    ##
+    ## When interval is == 0.0 compares system CPU times elapsed since last
+    ## call or module import, returning immediately (non
+    ## blocking). That means the first time this is called it will
+    ## return a meaningless 0.0 value which you should ignore.
+    ## In this case is recommended for accuracy that this function be
+    ## called with at least 0.1 seconds between calls.
+    ## When percpu is True returns a list of floats representing the
+    ## utilization as a percentage for each CPU.
+    ## First element of the list refers to first CPU, second element
+    ## to second CPU and so on.
+    ## The order of the list is consistent across calls.
+    ## Examples:
+    ##   >>> # blocking, system-wide
+    ##   >>> psutil.cpu_percent(interval=1)
+    ##   2.0
+    ##   >>>
+    ##   >>> # blocking, per-cpu
+    ##   >>> psutil.cpu_percent(interval=1, percpu=True)
+    ##   [2.0, 1.0]
+    ##   >>>
+    ##   >>> # non-blocking (percentage since last call)
+    ##   >>> psutil.cpu_percent(interval=None)
+    ##   2.9
+    ##   >>>
+
+    let blocking = interval > 0.0
+    if interval < 0:
+        raise newException(ValueError, "interval is not positive (got $1)" % $interval)
+
+    # system-wide usage
+    var t1 = g_last_cpu_times
+    if blocking:
+        t1 = cpu_times()
+        sleep( int(interval * 1000) )
+    else:
+        var empty: CPUTimes
+        if t1 == empty:
+            # Something bad happened at import time. We'll
+            # get a meaningful result on the next call. See:
+            # https://github.com/giampaolo/psutil/pull/715
+            t1 = cpu_times()
+    g_last_cpu_times = cpu_times()
+    return calculate(t1, g_last_cpu_times)
+
+
+proc per_cpu_percent*( interval=0.0 ): seq[float] =
+    let blocking = interval > 0.0
+    if interval < 0:
+        raise newException(ValueError, "interval is not positive (got $1)" % $interval)
+
+    result = newSeq[float]()
+    var tot1 = g_last_per_cpu_times
+    if blocking:
+        tot1 = per_cpu_times()
+        sleep( int( interval * 1000 ) )
+    else:
+        if tot1 == nil:
+            # Something bad happened at import time. We'll
+            # get a meaningful result on the next call. See:
+            # https://github.com/giampaolo/psutil/pull/715
+            tot1 = per_cpu_times()
+
+    g_last_per_cpu_times = per_cpu_times()
+    for pair in zip(tot1, g_last_per_cpu_times):
+        result.add(calculate(pair[0], pair[1]))
+    return result
 
 
 ################################################################################

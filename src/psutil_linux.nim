@@ -40,9 +40,6 @@ type utmp = object
     ut_addr_v6: array[4, int32] # Internet address of remote host.
     unused: array[20, char]     # Reserved for future use.
 
-type cpu_times_t = tuple[ user, nice, system, idle, iowait,
-                          irq, softirq, steal, guest, guest_nice : float ]
-
 
 ################################################################################
 proc getutent(): ptr utmp {.header: "<utmp.h>".}
@@ -112,7 +109,7 @@ proc users*(): seq[User] =
     endutent()
 
 
-proc parse_cpu_time_line( text: string ): cpu_times_t =
+proc parse_cpu_time_line( text: string ): CPUTimes =
     let values = filterIt( text.split(), it.strip() != "" )
     let times = mapIt( values[1..<len(values)], parseFloat(it) / CLOCK_TICKS.float)
     if len(times) >= 7:
@@ -131,7 +128,7 @@ proc parse_cpu_time_line( text: string ): cpu_times_t =
         result.guest_nice = times[9]
 
 
-proc cpu_times*(): cpu_times_t =
+proc cpu_times*(): CPUTimes =
     # Return a tuple representing the following system-wide CPU times:
     # (user, nice, system, idle, iowait, irq, softirq [steal, [guest,
     #  [guest_nice]]])
@@ -141,10 +138,10 @@ proc cpu_times*(): cpu_times_t =
         break
 
 
-proc per_cpu_times*(): seq[cpu_times_t] =
+proc per_cpu_times*(): seq[CPUTimes] =
     ## Return a list of tuples representing the CPU times for every
     ## CPU available on the system.
-    result = newSeq[cpu_times_t]()
+    result = newSeq[CPUTimes]()
     for line in lines( PROCFS_PATH / "stat" ):
         if not line.startswith("cpu"): continue
         let entry = parse_cpu_time_line( line )
