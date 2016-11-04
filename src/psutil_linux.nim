@@ -5,6 +5,7 @@ import sequtils
 import strutils
 import tables
 
+import common
 import types
 import psutil_posix
 
@@ -18,6 +19,7 @@ const UT_HOSTSIZE = 256
 const USER_PROCESS = 7  # Normal process.
 
 let CLOCK_TICKS = sysconf( SC_CLK_TCK )
+let PAGESIZE = sysconf( SC_PAGE_SIZE )
 
 type timeval_32 = object
     tv_sec: int32  # Seconds.
@@ -71,7 +73,7 @@ proc pid_exists*( pid: int ): bool =
 
     try:
         # Note: already checked that this is faster than using a regular expr.
-        # Also (a lot) faster than doing 'return pid in pids()'
+        # Also (a lot) faster than doing "return pid in pids()"
         let status_path = PROCFS_PATH / $pid / "status"
         for line in status_path.lines:
             if line.startswith( "Tgid:" ):
@@ -209,3 +211,165 @@ proc cpu_count_physical*(): int =
 
     let values = toSeq(mapping.values())
     return sum(values)
+
+
+proc calculate_avail_vmem( mems:TableRef[string,int] ): int =
+    ## Fallback for kernels < 3.14 where /proc/meminfo does not provide
+    ## "MemAvailable:" column (see: https://blog.famzah.net/2014/09/24/).
+    ## This code reimplements the algorithm outlined here:
+    ## https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/
+    ##     commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
+    ## XXX: on recent kernels this calculation differs by ~1.5% than
+    ## "MemAvailable:" as it's calculated slightly differently, see:
+    ## https://gitlab.com/procps-ng/procps/issues/42
+    ## https://github.com/famzah/linux-memavailable-procfs/issues/2
+    ## It is still way more realistic than doing (free + cached) though.
+
+    # Fallback for very old distros. According to
+    # https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/
+    #     commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
+    # ...long ago "avail" was calculated as (free + cached).
+    # We might fallback in such cases:
+    # "Active(file)" not available: 2.6.28 / Dec 2008
+    # "Inactive(file)" not available: 2.6.28 / Dec 2008
+    # "SReclaimable:" not available: 2.6.19 / Nov 2006
+    # /proc/zoneinfo not available: 2.6.13 / Aug 2005
+    let free = mems["MemFree:"]
+    let fallback = free + mems.getOrDefault("Cached:")
+
+    var lru_active_file = 0
+    var lru_inactive_file = 0
+    var slab_reclaimable = 0
+    try:
+        lru_active_file = mems["Active(file):"]
+        lru_inactive_file = mems["Inactive(file):"]
+        slab_reclaimable = mems["SReclaimable:"]
+    except KeyError:
+        return fallback
+
+    var watermark_low = 0
+    try:
+        for line in lines( PROCFS_PATH / "zoneinfo" ):
+            if line.strip().startswith("low"):
+                watermark_low += parseInt(filterIt(line.split(), it != "")[1])
+    except IOError:
+        return fallback  # kernel 2.6.13
+
+    watermark_low *= PAGESIZE
+    watermark_low = watermark_low
+
+    var avail = free - watermark_low
+    var pagecache = lru_active_file + lru_inactive_file
+    pagecache -= min(int(pagecache / 2), watermark_low)
+    avail += pagecache
+    avail += slab_reclaimable - min(int(slab_reclaimable / 2), watermark_low)
+    return int(avail)
+
+
+proc virtual_memory*(): VirtualMemory =
+    ## Report virtual memory stats.
+    ## This implementation matches "free" and "vmstat -s" cmdline
+    ## utility values and procps-ng-3.3.12 source was used as a reference
+    ## (2016-09-18):
+    ## https://gitlab.com/procps-ng/procps/blob/
+    ##     24fd2605c51fccc375ab0287cec33aa767f06718/proc/sysinfo.c
+    ## For reference, procps-ng-3.3.10 is the version available on Ubuntu
+    ## 16.04.
+    ## Note about "available" memory: up until psutil 4.3 it was
+    ## calculated as "avail = (free + buffers + cached)". Now
+    ## "MemAvailable:" column (kernel 3.14) from /proc/meminfo is used as
+    ## it's more accurate.
+    ## That matches "available" column in newer versions of "free".
+
+    var missing_fields = newSeq[string]()
+    var mems = newTable[string, int]()
+    for line in lines( PROCFS_PATH / "meminfo" ):
+        let fields = filterIt( line.split(), it.strip() != "" )
+        mems[fields[0]] = parseInt(fields[1]) * 1024
+
+    # /proc doc states that the available fields in /proc/meminfo vary
+    # by architecture and compile options, but these 3 values are also
+    # returned by sysinfo(2); as such we assume they are always there.
+    let total = mems["MemTotal:"]
+    let free = mems["MemFree:"]
+    let buffers = mems["Buffers:"]
+
+    var cached = 0
+    try:
+        cached = mems["Cached:"]
+        # "free" cmdline utility sums reclaimable to cached.
+        # Older versions of procps used to add slab memory instead.
+        # This got changed in:
+        # https://gitlab.com/procps-ng/procps/commit/
+        #     05d751c4f076a2f0118b914c5e51cfbb4762ad8e
+        cached += mems.getOrDefault("SReclaimable:")  # since kernel 2.6.19
+    except KeyError:
+        missing_fields.add("cached")
+
+    var shared = 0
+    try:
+        shared = mems["Shmem:"]  # since kernel 2.6.32
+    except KeyError:
+        try:
+            shared = mems["MemShared:"]  # kernels 2.4
+        except KeyError:
+            missing_fields.add("shared")
+
+    var active = 0
+    try:
+        active = mems["Active:"]
+    except KeyError:
+        missing_fields.add("active")
+
+    var inactive = 0
+    try:
+        inactive = mems["Inactive:"]
+    except KeyError:
+        try:
+            inactive = mems["Inact_dirty:"] + mems["Inact_clean:"] + mems["Inact_laundry:"]
+        except KeyError:
+            missing_fields.add("inactive")
+
+    var used = total - free - cached - buffers
+    if used < 0:
+        # May be symptomatic of running within a LCX container where such
+        # values will be dramatically distorted over those of the host.
+        used = total - free
+
+    # - starting from 4.4.0 we match free's "available" column.
+    #   Before 4.4.0 we calculated it as (free + buffers + cached)
+    #   which matched htop.
+    # - free and htop available memory differs as per:
+    #   http://askubuntu.com/a/369589
+    #   http://unix.stackexchange.com/a/65852/168884
+    # - MemAvailable has been introduced in kernel 3.14
+    var avail = 0
+    try:
+        avail = mems["MemAvailable:"]
+    except KeyError:
+        avail = calculate_avail_vmem(mems)
+
+    if avail < 0:
+        avail = 0
+        missing_fields.add("available")
+
+    # If avail is greater than total or our calculation overflows,
+    # that's symptomatic of running within a LCX container where such
+    # values will be dramatically distorted over those of the host.
+    # https://gitlab.com/procps-ng/procps/blob/
+    #     24fd2605c51fccc375ab0287cec33aa767f06718/proc/sysinfo.c#L764
+    if avail > total:
+        avail = free
+
+    let percent = usage_percent( (total - avail), total, places=1 )
+
+    # Warn about missing metrics which are set to 0.
+    if len( missing_fields ) > 0:
+        echo( missing_fields.join( ", " ),
+              " memory stats couldn't be determined and ",
+              if len(missing_fields) == 1: "was" else: "were",
+              " set to 0" )
+
+    return VirtualMemory( total:total, avail:avail, percent:percent, used:used,
+                          free:free, active:active, inactive:inactive,
+                          buffers:buffers, cached:cached, shared:shared )

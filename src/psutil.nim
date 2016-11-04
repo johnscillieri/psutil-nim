@@ -1,7 +1,6 @@
 ##[
 Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
-    virtual_memory()
     swap_memory()
     disk_partitions(all=False)
     disk_usage(path)
@@ -26,6 +25,17 @@ when defined(posix):
 
 when defined(linux):
     import psutil_linux as platform
+
+################################################################################
+var g_last_cpu_times: CPUTimes
+var g_last_per_cpu_times: seq[CPUTimes]
+try:
+    g_last_cpu_times = cpu_times()
+    g_last_per_cpu_times = per_cpu_times()
+except IOError:
+    discard
+
+var g_total_phymem: int
 
 
 ################################################################################
@@ -55,15 +65,6 @@ proc cpu_count*(logical=true): int =
     # Return 0 if undetermined.
     if logical: platform.cpu_count_logical()
     else: platform.cpu_count_physical()
-
-
-var g_last_cpu_times: CPUTimes
-var g_last_per_cpu_times: seq[CPUTimes]
-try:
-    g_last_cpu_times = cpu_times()
-    g_last_per_cpu_times = per_cpu_times()
-except IOError:
-    discard
 
 
 proc calculate(t1, t2: CPUTimes): float =
@@ -157,6 +158,50 @@ proc per_cpu_percent*( interval=0.0 ): seq[float] =
     for pair in zip(tot1, g_last_per_cpu_times):
         result.add(calculate(pair[0], pair[1]))
     return result
+
+
+proc virtual_memory*(): VirtualMemory =
+    ## Return statistics about system memory usage as a namedtuple
+    ## including the following fields, expressed in bytes:
+    ##  - total:
+    ##    total physical memory available.
+    ##  - available:
+    ##    the memory that can be given instantly to processes without the
+    ##    system going into swap.
+    ##    This is calculated by summing different memory values depending
+    ##    on the platform and it is supposed to be used to monitor actual
+    ##    memory usage in a cross platform fashion.
+    ##  - percent:
+    ##    the percentage usage calculated as (total - available) / total * 100
+    ##  - used:
+    ##    memory used, calculated differently depending on the platform and
+    ##    designed for informational purposes only:
+    ##     OSX: active + inactive + wired
+    ##     BSD: active + wired + cached
+    ##     LINUX: total - free
+    ##  - free:
+    ##    memory not being used at all (zeroed) that is readily available;
+    ##    note that this doesn't reflect the actual memory available
+    ##    (use 'available' instead)
+    ## Platform-specific fields:
+    ##  - active (UNIX):
+    ##    memory currently in use or very recently used, and so it is in RAM.
+    ##  - inactive (UNIX):
+    ##    memory that is marked as not used.
+    ##  - buffers (BSD, Linux):
+    ##    cache for things like file system metadata.
+    ##  - cached (BSD, OSX):
+    ##    cache for various things.
+    ##  - wired (OSX, BSD):
+    ##    memory that is marked to always stay in RAM. It is never moved to disk.
+    ##  - shared (BSD):
+    ##    memory that may be simultaneously accessed by multiple processes.
+    ## The sum of 'used' and 'available' does not necessarily equal total.
+    ## On Windows 'available' and 'free' are the same.
+
+    result = platform.virtual_memory()
+    # cached for later use in Process.memory_percent()
+    g_total_phymem = result.total
 
 
 ################################################################################

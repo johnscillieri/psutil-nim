@@ -14,3 +14,15 @@ type User* = object
 
 type CPUTimes* = tuple[ user, nice, system, idle, iowait,
                         irq, softirq, steal, guest, guest_nice : float ]
+
+type VirtualMemory* = object of RootObj
+    total*: int
+    avail*: int
+    percent*: float
+    used*: int
+    free*: int
+    active*: int
+    inactive*: int
+    buffers*: int
+    cached*: int
+    shared*: int
