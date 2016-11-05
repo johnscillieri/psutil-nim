@@ -26,3 +26,9 @@ type VirtualMemory* = object of RootObj
     buffers*: int
     cached*: int
     shared*: int
+
+type DiskUsage* = object of RootObj
+    total*: int
+    used*: int
+    free*:int
+    percent*: float

@@ -3,7 +3,6 @@ Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
     swap_memory()
     disk_partitions(all=False)
-    disk_usage(path)
     disk_io_counters(perdisk=False)
     net_io_counters(pernic=False)
     net_connections(kind='inet')
@@ -215,3 +214,4 @@ export cpu_times
 export per_cpu_times
 export cpu_stats
 export cpu_count
+export disk_usage

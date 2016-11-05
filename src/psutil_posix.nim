@@ -2,6 +2,7 @@ import posix
 import strutils
 import tables
 
+import common
 import types
 
 var AF_PACKET* {.importc, header: "<sys/socket.h>".}: cint
@@ -152,3 +153,37 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
     else:
         # unknown family
         return nil
+
+
+proc disk_usage*(path: string): DiskUsage =
+    ## Return disk usage associated with path.
+    ## Note: UNIX usually reserves 5% disk space which is not accessible
+    ## by user. In this function "total" and "used" values reflect the
+    ## total and used disk space whereas "free" and "percent" represent
+    ## the "free" and "used percent" user disk space.
+
+    var st: Statvfs
+    let ret_code = statvfs(path, st)
+    if ret_code == -1:
+        echo( "disk_usage error: ", strerror( errno ) )
+        return
+
+    # Total space which is only available to root (unless changed at system level).
+    let total = (st.f_blocks * st.f_frsize)
+    # Remaining free space usable by root.
+    let avail_to_root = (st.f_bfree * st.f_frsize)
+    # Remaining free space usable by user.
+    let avail_to_user = (st.f_bavail * st.f_frsize)
+    # Total space being used in general.
+    let used = (total - avail_to_root)
+    # Total space which is available to user (same as 'total' but for the user).
+    let total_user = used + avail_to_user
+    # User usage percent compared to the total amount of space
+    # the user can use. This number would be higher if compared
+    # to root's because the user has less space (usually -5%).
+    let usage_percent_user = usage_percent(used, total_user, places=1)
+
+    # NB: the percentage is -5% than what shown by df due to
+    # reserved blocks that we are currently not considering:
+    # https://github.com/giampaolo/psutil/issues/829#issuecomment-223750462
+    return DiskUsage( total:total, used:used, free:avail_to_user, percent:usage_percent_user)
