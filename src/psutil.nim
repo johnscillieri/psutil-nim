@@ -23,6 +23,7 @@ when defined(posix):
 when defined(linux):
     import psutil_linux as platform
 
+
 ################################################################################
 var g_last_cpu_times: CPUTimes
 var g_last_per_cpu_times: seq[CPUTimes]
