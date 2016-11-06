@@ -41,11 +41,27 @@ type utmp = object
     ut_addr_v6: array[4, int32] # Internet address of remote host.
     unused: array[20, char]     # Reserved for future use.
 
+type SysInfo = object
+    uptime*: uint             # Seconds since boot
+    loads*: array[3, uint]   # 1, 5, and 15 minute load averages
+    totalram*: uint  # Total usable main memory size
+    freeram*: uint   # Available memory size
+    sharedram*: uint # Amount of shared memory
+    bufferram*: uint # Memory used by buffers
+    totalswap*: uint # Total swap space size
+    freeswap*: uint  # swap space still available
+    procs*: uint16    # Number of current processes
+    totalhigh*: uint # Total high memory size
+    freehigh*: uint  # Available high memory size
+    mem_unit*: uint   # Memory unit size in bytes
+    f: array[20-2*sizeof(int)-sizeof(int32), char] #Padding to 64 bytes
+
 
 ################################################################################
 proc getutent(): ptr utmp {.header: "<utmp.h>".}
 proc setutent() {.header: "<utmp.h>".}
 proc endutent() {.header: "<utmp.h>".}
+proc sysinfo(info: var SysInfo): cint {.header: "<sys/sysinfo.h>".}
 
 
 proc boot_time*(): float =
@@ -373,22 +389,6 @@ proc virtual_memory*(): VirtualMemory =
                           free:free, active:active, inactive:inactive,
                           buffers:buffers, cached:cached, shared:shared )
 
-type SysInfo = object
-    uptime*: uint             # Seconds since boot
-    loads*: array[3, uint]   # 1, 5, and 15 minute load averages
-    totalram*: uint  # Total usable main memory size
-    freeram*: uint   # Available memory size
-    sharedram*: uint # Amount of shared memory
-    bufferram*: uint # Memory used by buffers
-    totalswap*: uint # Total swap space size
-    freeswap*: uint  # swap space still available
-    procs*: uint16    # Number of current processes
-    totalhigh*: uint # Total high memory size
-    freehigh*: uint  # Available high memory size
-    mem_unit*: uint   # Memory unit size in bytes
-    f: array[20-2*sizeof(int)-sizeof(int32), char] #Padding to 64 bytes
-
-proc sysinfo(info: var SysInfo): cint {.importc, header: "<sys/sysinfo.h>".}
 
 proc swap_memory*(): SwapMemory =
     var si: SysInfo
