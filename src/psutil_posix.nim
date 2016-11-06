@@ -3,7 +3,6 @@ import strutils
 import tables
 
 import common
-import types
 
 var AF_PACKET* {.importc, header: "<sys/socket.h>".}: cint
 var IFF_BROADCAST* {.importc, header: "<net/if.h>".}: uint

@@ -6,7 +6,6 @@ import strutils
 import tables
 
 import common
-import types
 import psutil_posix
 
 
@@ -373,3 +372,59 @@ proc virtual_memory*(): VirtualMemory =
     return VirtualMemory( total:total, avail:avail, percent:percent, used:used,
                           free:free, active:active, inactive:inactive,
                           buffers:buffers, cached:cached, shared:shared )
+
+type SysInfo = object
+    uptime*: uint             # Seconds since boot
+    loads*: array[3, uint]   # 1, 5, and 15 minute load averages
+    totalram*: uint  # Total usable main memory size
+    freeram*: uint   # Available memory size
+    sharedram*: uint # Amount of shared memory
+    bufferram*: uint # Memory used by buffers
+    totalswap*: uint # Total swap space size
+    freeswap*: uint  # swap space still available
+    procs*: uint16    # Number of current processes
+    totalhigh*: uint # Total high memory size
+    freehigh*: uint  # Available high memory size
+    mem_unit*: uint   # Memory unit size in bytes
+    f: array[20-2*sizeof(int)-sizeof(int32), char] #Padding to 64 bytes
+
+proc sysinfo(info: var SysInfo): cint {.importc, header: "<sys/sysinfo.h>".}
+
+proc swap_memory*(): SwapMemory =
+    var si: SysInfo
+    let ret_code = sysinfo( si )
+    if ret_code == -1:
+        echo( "Error calling sysinfo: ", errno )
+        return
+
+    let total = si.totalswap * si.mem_unit
+    let free = si.freeswap * si.mem_unit
+    let used = total - free
+    let percent = usage_percent(used.int, total.int, places=1)
+
+    # get pgin/pgouts
+    var sin, sout = 0
+    try:
+        for line in lines( PROCFS_PATH / "vmstat" ):
+            # values are expressed in 4 kilo bytes, we want
+            # bytes instead
+            if line.startswith("pswpin"):
+                sin = parseInt(line.split()[1]) * 4 * 1024
+            elif line.startswith("pswpout"):
+                sout = parseInt(line.split()[1]) * 4 * 1024
+            if sin != 0 and sout != 0:
+                break
+
+        if not existsFile( PROCFS_PATH / "vmstat" ):
+            # we might get here when dealing with exotic Linux flavors, see:
+            # https://github.com/giampaolo/psutil/issues/313
+            echo( "'sin' and 'sout' swap memory stats couldn't be determined ",
+                  "and were set to 0" )
+
+    except IOError:
+        # see https://github.com/giampaolo/psutil/issues/722
+        echo( "'sin' and 'sout' swap memory stats couldn't be determined ",
+              "and were set to 0" )
+
+    return SwapMemory( total:total.int, used:used.int, free:free.int,
+                       percent:percent, sin:sin, sout:sout )

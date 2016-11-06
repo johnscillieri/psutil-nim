@@ -18,5 +18,7 @@ echo_proc( cpu_percent( interval=0.0 ) )
 echo_proc( cpu_percent( interval=1.0 ) )
 echo_proc( per_cpu_percent( interval=0.0 ) )
 echo_proc( per_cpu_percent( interval=1.0 ) )
-echo_proc( virtual_memory() )
 echo_proc( disk_usage(".") )
+echo_proc( virtual_memory() )
+echo_proc( swap_memory() )
+

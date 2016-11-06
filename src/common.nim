@@ -1,5 +1,60 @@
 import math
 
+
+################################################################################
+type Address* = object of RootObj
+    family*: int
+    address*: string
+    netmask*: string
+    broadcast*: string
+    ptp*: string
+
+type User* = object
+    name*: string
+    terminal*: string
+    host*: string
+    started*: float
+
+type CPUTimes* = object of RootObj
+    user*: float
+    nice*: float
+    system*: float
+    idle*: float
+    iowait*: float
+    irq*: float
+    softirq*: float
+    steal*: float
+    guest*: float
+    guest_nice*: float
+
+type DiskUsage* = object of RootObj
+    total*: int
+    used*: int
+    free*:int
+    percent*: float
+
+type VirtualMemory* = object of RootObj
+    total*: int
+    avail*: int
+    percent*: float
+    used*: int
+    free*: int
+    active*: int
+    inactive*: int
+    buffers*: int
+    cached*: int
+    shared*: int
+
+type SwapMemory* = object of RootObj
+    total*: int
+    used*: int
+    free*: int
+    percent*: float
+    sin*: int
+    sout*: int
+
+
+################################################################################
 proc usage_percent*[T](used: T, total: T, places=0): float =
     ## Calculate percentage usage of 'used' against 'total'.
     try:
