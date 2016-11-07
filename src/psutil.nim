@@ -2,7 +2,6 @@
 Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
     disk_io_counters(perdisk=False)
-    net_io_counters(pernic=False)
     net_connections(kind='inet')
     net_if_stats()
     process_iter()
@@ -201,6 +200,33 @@ proc virtual_memory*(): VirtualMemory =
     g_total_phymem = result.total
 
 
+proc net_io_counters_total*(): NetIO =
+    ## Return total network I/O statistics including the following fields:
+    ##  - bytes_sent:   number of bytes sent
+    ##  - bytes_recv:   number of bytes received
+    ##  - packets_sent: number of packets sent
+    ##  - packets_recv: number of packets received
+    ##  - errin:        total number of errors while receiving
+    ##  - errout:       total number of errors while sending
+    ##  - dropin:       total number of incoming packets which were dropped
+    ##  - dropout:      total number of outgoing packets which were dropped
+    ##                  (always 0 on OSX and BSD)
+
+    let raw_counters = platform.net_io_counters()
+    if len(raw_counters) == 0:
+        raise newException( SystemError, "couldn't find any network interface")
+
+    for _, counter in raw_counters:
+        result.bytes_sent += counter.bytes_sent
+        result.bytes_recv += counter.bytes_recv
+        result.packets_sent += counter.packets_sent
+        result.packets_recv += counter.packets_recv
+        result.errin += counter.errin
+        result.errout += counter.errout
+        result.dropin += counter.dropin
+        result.dropout += counter.dropout
+
+
 ################################################################################
 export tables
 
@@ -215,3 +241,4 @@ export cpu_count
 export disk_usage
 export swap_memory
 export disk_partitions
+export net_io_counters

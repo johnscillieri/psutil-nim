@@ -473,3 +473,28 @@ proc disk_partitions*(all=false): seq[DiskPartition] =
         entry = getmntent( file )
 
     discard endmntent( file )
+
+
+proc net_io_counters*(): TableRef[string, NetIO] =
+    ## Return network I/O statistics for every network interface
+    ## installed on the system as a dict of raw tuples.
+    result = newTable[string, NetIO]()
+    for line in lines( PROCFS_PATH / "net/dev" ):
+        if not( ":" in line ): continue
+        let colon = line.rfind(':')
+        let name = line[..colon].strip()
+        let fields = line[(colon + 1)..len(line)].strip().splitWhitespace()
+
+        let bytes_sent = parseInt( fields[8] )
+        let bytes_recv = parseInt( fields[0] )
+        let packets_sent = parseInt( fields[9] )
+        let packets_recv = parseInt( fields[1] )
+        let errin = parseInt( fields[2] )
+        let errout = parseInt( fields[10] )
+        let dropin = parseInt( fields[3] )
+        let dropout = parseInt( fields[11] )
+
+        result[name] = NetIO( bytes_sent:bytes_sent, bytes_recv:bytes_recv,
+                              packets_sent:packets_sent, packets_recv:packets_recv,
+                              errin:errin, errout:errout,
+                              dropin:dropin, dropout:dropout )

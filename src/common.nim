@@ -59,6 +59,15 @@ type SwapMemory* = object of RootObj
     sin*: int
     sout*: int
 
+type NetIO* = object of RootObj
+    bytes_sent*: int
+    bytes_recv*: int
+    packets_sent*: int
+    packets_recv*: int
+    errin*: int
+    errout*: int
+    dropin*: int
+    dropout*: int
 
 ################################################################################
 proc usage_percent*[T](used: T, total: T, places=0): float =
