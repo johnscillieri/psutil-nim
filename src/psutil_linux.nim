@@ -2,6 +2,7 @@ import math
 import os
 import posix
 import sequtils
+import sets
 import strutils
 import tables
 
@@ -16,6 +17,8 @@ const UT_LINESIZE = 32
 const UT_NAMESIZE = 32
 const UT_HOSTSIZE = 256
 const USER_PROCESS = 7  # Normal process.
+
+var MOUNTED {.importc, header: "<mntent.h>".}: cstring
 
 let CLOCK_TICKS = sysconf( SC_CLK_TCK )
 let PAGESIZE = sysconf( SC_PAGE_SIZE )
@@ -56,12 +59,24 @@ type SysInfo = object
     mem_unit*: uint   # Memory unit size in bytes
     f: array[20-2*sizeof(int)-sizeof(int32), char] #Padding to 64 bytes
 
+type mntent = ref object
+    mnt_fsname*:cstring   # name of mounted filesystem
+    mnt_dir*:cstring      # filesystem path prefix
+    mnt_type*:cstring     # mount type (see mntent.h)
+    mnt_opts*:cstring     # mount options (see mntent.h)
+    mnt_freq*:int         # dump frequency in days
+    mnt_passno*:int       # pass number on parallel fsck
+
 
 ################################################################################
 proc getutent(): ptr utmp {.header: "<utmp.h>".}
 proc setutent() {.header: "<utmp.h>".}
 proc endutent() {.header: "<utmp.h>".}
 proc sysinfo(info: var SysInfo): cint {.header: "<sys/sysinfo.h>".}
+proc setmntent(filename: cstring, `type`: cstring): File {.header: "<mntent.h>".}
+proc getmntent(stream: File): mntent {.header: "<mntent.h>".}
+proc endmntent(streamp: File): int {.header: "<mntent.h>".}
+
 
 
 proc boot_time*(): float =
@@ -424,3 +439,37 @@ proc swap_memory*(): SwapMemory =
     # https://github.com/giampaolo/psutil/issues/313
     echo( "'sin' and 'sout' swap memory stats couldn't be determined ",
             "and were set to 0" )
+
+
+proc disk_partitions*(all=false): seq[DiskPartition] =
+    ## Return mounted disk partitions as a sequence of DiskPartitions
+    var fstypes = initSet[string]()
+    for raw_line in lines( PROCFS_PATH / "filesystems" ):
+        let line = raw_line.strip()
+        if not line.startswith("nodev"):
+            fstypes.incl( line )
+        else:
+            # ignore all lines starting with "nodev" except "nodev zfs"
+            if line.split("\t")[1] == "zfs":
+                fstypes.incl( "zfs" )
+
+    result = newSeq[DiskPartition]()
+
+    let file = setmntent(MOUNTED, "r");
+    var entry = getmntent( file )
+    while entry != nil:
+        let device = if entry.mnt_fsname == "none": "" else: $entry.mnt_fsname
+        let mountpoint = $entry.mnt_dir
+        let fstype = $entry.mnt_type
+        let opts = $entry.mnt_opts
+
+        if not all:
+            if device == "" or not( fstype in fstypes ):
+                entry = getmntent( file )
+                continue
+        let partition = DiskPartition( device:device, mountpoint:mountpoint,
+                                       fstype:fstype, opts:opts )
+        result.add( partition )
+        entry = getmntent( file )
+
+    discard endmntent( file )

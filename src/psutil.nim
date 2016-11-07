@@ -215,3 +215,4 @@ export cpu_stats
 export cpu_count
 export disk_usage
 export swap_memory
+export disk_partitions

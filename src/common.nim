@@ -33,6 +33,12 @@ type DiskUsage* = object of RootObj
     free*:int
     percent*: float
 
+type DiskPartition* = object of RootObj
+    device*: string
+    mountpoint*: string
+    fstype*: string
+    opts*: string
+
 type VirtualMemory* = object of RootObj
     total*: int
     avail*: int

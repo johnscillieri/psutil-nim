@@ -21,4 +21,5 @@ echo_proc( per_cpu_percent( interval=1.0 ) )
 echo_proc( disk_usage(".") )
 echo_proc( virtual_memory() )
 echo_proc( swap_memory() )
-
+echo_proc( disk_partitions( all=false ) )
+echo_proc( disk_partitions( all=true ) )
