@@ -1,7 +1,6 @@
 ##[
 Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
-    disk_partitions(all=False)
     disk_io_counters(perdisk=False)
     net_io_counters(pernic=False)
     net_connections(kind='inet')
