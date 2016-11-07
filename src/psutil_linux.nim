@@ -69,7 +69,7 @@ proc boot_time*(): float =
     let stat_path = PROCFS_PATH / "stat"
     for line in stat_path.lines:
         if line.startswith("btime"):
-            return line.strip().split( " " )[1].parseFloat()
+            return line.strip().split()[1].parseFloat()
 
     raise newException(OSError, "line 'btime' not found in $1" % stat_path)
 
@@ -127,7 +127,7 @@ proc users*(): seq[User] =
 
 
 proc parse_cpu_time_line( text: string ): CPUTimes =
-    let values = filterIt( text.split(), it.strip() != "" )
+    let values = text.splitWhitespace()
     let times = mapIt( values[1..<len(values)], parseFloat(it) / CLOCK_TICKS.float)
     if len(times) >= 7:
         result.user = times[0]
@@ -266,7 +266,7 @@ proc calculate_avail_vmem( mems:TableRef[string,int] ): int =
     try:
         for line in lines( PROCFS_PATH / "zoneinfo" ):
             if line.strip().startswith("low"):
-                watermark_low += parseInt(filterIt(line.split(), it != "")[1])
+                watermark_low += parseInt(line.splitWhitespace()[1])
     except IOError:
         return fallback  # kernel 2.6.13
 
@@ -299,7 +299,7 @@ proc virtual_memory*(): VirtualMemory =
     var missing_fields = newSeq[string]()
     var mems = newTable[string, int]()
     for line in lines( PROCFS_PATH / "meminfo" ):
-        let fields = filterIt( line.split(), it.strip() != "" )
+        let fields = line.splitWhitespace()
         mems[fields[0]] = parseInt(fields[1]) * 1024
 
     # /proc doc states that the available fields in /proc/meminfo vary
