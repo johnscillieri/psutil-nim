@@ -483,16 +483,16 @@ proc net_io_counters*(): TableRef[string, NetIO] =
         if not( ":" in line ): continue
         let colon = line.rfind(':')
         let name = line[..colon].strip()
-        let fields = line[(colon + 1)..len(line)].splitWhitespace()
+        let fields = mapIt( line[(colon + 1)..len(line)].splitWhitespace(), parseInt(it) )
 
-        result[name] = NetIO( bytes_sent: parseInt( fields[8] ),
-                              bytes_recv: parseInt( fields[0] ),
-                              packets_sent: parseInt( fields[9] ),
-                              packets_recv: parseInt( fields[1] ),
-                              errin: parseInt( fields[2] ),
-                              errout: parseInt( fields[10] ),
-                              dropin: parseInt( fields[3] ),
-                              dropout: parseInt( fields[11] ) )
+        result[name] = NetIO( bytes_sent: fields[8],
+                              bytes_recv: fields[0],
+                              packets_sent: fields[9],
+                              packets_recv: fields[1],
+                              errin: fields[2],
+                              errout: fields[10],
+                              dropin: fields[3],
+                              dropout: fields[11] )
 
 
 # proc net_if_stats(): TableRef[string, NICstats] =
