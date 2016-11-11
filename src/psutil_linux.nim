@@ -483,18 +483,27 @@ proc net_io_counters*(): TableRef[string, NetIO] =
         if not( ":" in line ): continue
         let colon = line.rfind(':')
         let name = line[..colon].strip()
-        let fields = line[(colon + 1)..len(line)].strip().splitWhitespace()
+        let fields = line[(colon + 1)..len(line)].splitWhitespace()
 
-        let bytes_sent = parseInt( fields[8] )
-        let bytes_recv = parseInt( fields[0] )
-        let packets_sent = parseInt( fields[9] )
-        let packets_recv = parseInt( fields[1] )
-        let errin = parseInt( fields[2] )
-        let errout = parseInt( fields[10] )
-        let dropin = parseInt( fields[3] )
-        let dropout = parseInt( fields[11] )
+        result[name] = NetIO( bytes_sent: parseInt( fields[8] ),
+                              bytes_recv: parseInt( fields[0] ),
+                              packets_sent: parseInt( fields[9] ),
+                              packets_recv: parseInt( fields[1] ),
+                              errin: parseInt( fields[2] ),
+                              errout: parseInt( fields[10] ),
+                              dropin: parseInt( fields[3] ),
+                              dropout: parseInt( fields[11] ) )
 
-        result[name] = NetIO( bytes_sent:bytes_sent, bytes_recv:bytes_recv,
-                              packets_sent:packets_sent, packets_recv:packets_recv,
-                              errin:errin, errout:errout,
-                              dropin:dropin, dropout:dropout )
+
+# proc net_if_stats(): TableRef[string, NICstats] =
+#     ## Get NIC stats (isup, duplex, speed, mtu).
+#     let duplex_map = {cext.DUPLEX_FULL: NIC_DUPLEX_FULL,
+#                       cext.DUPLEX_HALF: NIC_DUPLEX_HALF,
+#                       cext.DUPLEX_UNKNOWN: NIC_DUPLEX_UNKNOWN}.toTable()
+#     let names = toSeq( net_io_counters().keys() )
+#     result = newTable[string, NICStats]()
+#     for name in names:
+#         let mtu = cext_posix.net_if_mtu(name)
+#         let isup = cext_posix.net_if_flags(name)
+#         let (duplex, speed) = cext.net_if_duplex_speed(name)
+#         result[name] = NICStats(isup:isup, duplex:duplex_map[duplex], speed:speed, mtu:mtu)
