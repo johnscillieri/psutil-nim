@@ -69,6 +69,16 @@ type NetIO* = object of RootObj
     dropin*: int
     dropout*: int
 
+type NicDuplex* = enum
+    NIC_DUPLEX_UNKNOWN, NIC_DUPLEX_HALF, NIC_DUPLEX_FULL
+
+type NICStats* = object of RootObj
+    isup*: bool
+    duplex*: NicDuplex
+    speed*: int
+    mtu*: int
+
+
 ################################################################################
 proc usage_percent*[T](used: T, total: T, places=0): float =
     ## Calculate percentage usage of 'used' against 'total'.

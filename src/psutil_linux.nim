@@ -19,6 +19,11 @@ const UT_HOSTSIZE = 256
 const USER_PROCESS = 7  # Normal process.
 
 var MOUNTED {.importc, header: "<mntent.h>".}: cstring
+var DUPLEX_FULL {.importc, header: "<linux/ethtool.h>".}: uint8
+var DUPLEX_HALF {.importc, header: "<linux/ethtool.h>".}: uint8
+var DUPLEX_UNKNOWN {.importc, header: "<linux/ethtool.h>".}: uint8
+var ETHTOOL_GSET {.importc, header: "<linux/ethtool.h>".}: uint8
+var SIOCETHTOOL {.importc, header: "<linux/sockios.h>".}: uint16
 
 let CLOCK_TICKS = sysconf( SC_CLK_TCK )
 let PAGESIZE = sysconf( SC_PAGE_SIZE )
@@ -67,6 +72,25 @@ type mntent = ref object
     mnt_freq*:int         # dump frequency in days
     mnt_passno*:int       # pass number on parallel fsck
 
+type ethtool_cmd = object
+    cmd*: uint32
+    supported*: uint32
+    advertising*: uint32
+    speed*: uint16
+    duplex*: uint8
+    port*: uint8
+    phy_address*: uint8
+    transceiver*: uint8
+    autoneg*: uint8
+    mdio_support*: uint8
+    maxtxpkt*: uint32
+    maxrxpkt*: uint32
+    speed_hi*: uint16
+    eth_tp_mdix*: uint8
+    eth_tp_mdix_ctrl*: uint8
+    lp_advertising*: uint32
+    reserved*: array[2, uint32]
+
 
 ################################################################################
 proc getutent(): ptr utmp {.header: "<utmp.h>".}
@@ -76,7 +100,6 @@ proc sysinfo(info: var SysInfo): cint {.header: "<sys/sysinfo.h>".}
 proc setmntent(filename: cstring, `type`: cstring): File {.header: "<mntent.h>".}
 proc getmntent(stream: File): mntent {.header: "<mntent.h>".}
 proc endmntent(streamp: File): int {.header: "<mntent.h>".}
-
 
 
 proc boot_time*(): float =
@@ -495,15 +518,35 @@ proc net_io_counters*(): TableRef[string, NetIO] =
                               dropout: fields[11] )
 
 
-# proc net_if_stats(): TableRef[string, NICstats] =
-#     ## Get NIC stats (isup, duplex, speed, mtu).
-#     let duplex_map = {cext.DUPLEX_FULL: NIC_DUPLEX_FULL,
-#                       cext.DUPLEX_HALF: NIC_DUPLEX_HALF,
-#                       cext.DUPLEX_UNKNOWN: NIC_DUPLEX_UNKNOWN}.toTable()
-#     let names = toSeq( net_io_counters().keys() )
-#     result = newTable[string, NICStats]()
-#     for name in names:
-#         let mtu = cext_posix.net_if_mtu(name)
-#         let isup = cext_posix.net_if_flags(name)
-#         let (duplex, speed) = cext.net_if_duplex_speed(name)
-#         result[name] = NICStats(isup:isup, duplex:duplex_map[duplex], speed:speed, mtu:mtu)
+proc net_if_duplex_speed*( name: string ): tuple[ duplex: NicDuplex, speed: int ] =
+    ## Return stats about a particular network interface.
+    ## References:
+    ## https://github.com/dpaleino/wicd/blob/master/wicd/backends/be-ioctl.py
+    ## http://www.i-scream.org/libstatgrab/
+
+    result = ( NIC_DUPLEX_UNKNOWN, 0 )
+
+    var ifr: ifreq
+    var ethcmd: ethtool_cmd
+    ethcmd.cmd = ETHTOOL_GSET
+    ifr.ifr_ifru.ifru_data = addr ethcmd
+    if not ioctlsocket( name, SIOCETHTOOL, ifr ):
+        return result
+
+    let duplex_map = { DUPLEX_FULL: NIC_DUPLEX_FULL,
+                       DUPLEX_HALF: NIC_DUPLEX_HALF,
+                       DUPLEX_UNKNOWN: NIC_DUPLEX_UNKNOWN }.toTable()
+    result.duplex = duplex_map[ethcmd.duplex]
+    result.speed = int( ethcmd.speed )
+
+
+proc net_if_stats*(): TableRef[string, NICstats] =
+    ## Get NIC stats (isup, duplex, speed, mtu).
+    let names = toSeq( net_io_counters().keys() )
+    result = newTable[string, NICStats]()
+    for name in names:
+        let (duplex, speed) = net_if_duplex_speed( name )
+        result[name] = NICStats( isup:net_if_flags( name ),
+                                 duplex:duplex,
+                                 speed:speed,
+                                 mtu:net_if_mtu( name ) )

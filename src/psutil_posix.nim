@@ -4,10 +4,19 @@ import tables
 
 import common
 
+
+################################################################################
+const IFHWADDRLEN* = 6
+const IF_NAMESIZE* = 16
+const IFNAMSIZ* = IF_NAMESIZE
+
 var AF_PACKET* {.importc, header: "<sys/socket.h>".}: cint
 var IFF_BROADCAST* {.importc, header: "<net/if.h>".}: uint
 var IFF_POINTOPOINT* {.importc, header: "<net/if.h>".}: uint
+var IFF_UP {.importc, header: "<linux/if.h>".}: uint
 var NI_MAXHOST* {.importc, header: "<net/if.h>".}: cint
+var SIOCGIFFLAGS {.importc, header: "<linux/sockios.h>".}: uint
+var SIOCGIFMTU {.importc, header: "<linux/sockios.h>".}: uint
 
 type ifaddrs = object
     pifaddrs: ptr ifaddrs # Next item in list
@@ -27,12 +36,42 @@ type sockaddr_ll = object
     sll_halen: uint8 # Length of address */
     sll_addr: array[8, uint8] # Physical-layer address */
 
+type
+  ifmap* = object
+    mem_start*: culong
+    mem_end*: culong
+    base_addr*: cushort
+    irq*: cuchar
+    dma*: cuchar
+    port*: cuchar              ## # 3 bytes spare
 
-proc getifaddrs( ifap: var ptr ifaddrs ): int
-    {.header: "<ifaddrs.h>", importc: "getifaddrs".}
+type
+  INNER_C_UNION_9261176668105079294* = object {.union.}
+    ifrn_name*: array[IFNAMSIZ, char] ## # Interface name, e.g. "en0".
 
-proc freeifaddrs( ifap: ptr ifaddrs ): void
-    {.header: "<ifaddrs.h>", importc: "freeifaddrs".}
+  INNER_C_UNION_7660000764852079517* = object {.union.}
+    ifru_addr*: SockAddr
+    ifru_dstaddr*: SockAddr
+    ifru_broadaddr*: SockAddr
+    ifru_netmask*: SockAddr
+    ifru_hwaddr*: SockAddr
+    ifru_flags*: cshort
+    ifru_ivalue*: cint
+    ifru_mtu*: cint
+    ifru_map*: ifmap
+    ifru_slave*: array[IFNAMSIZ, char] ## # Just fits the size
+    ifru_newname*: array[IFNAMSIZ, char]
+    ifru_data*: pointer
+
+  ifreq* = object
+    ifr_ifrn*: INNER_C_UNION_9261176668105079294
+    ifr_ifru*: INNER_C_UNION_7660000764852079517
+
+
+################################################################################
+proc ioctl*(f: FileHandle, device: uint, data: pointer): int {.header: "<sys/ioctl.h>".}
+proc getifaddrs( ifap: var ptr ifaddrs ): int {.header: "<ifaddrs.h>".}
+proc freeifaddrs( ifap: ptr ifaddrs ): void {.header: "<ifaddrs.h>".}
 
 proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string
 
@@ -186,3 +225,39 @@ proc disk_usage*(path: string): DiskUsage =
     # reserved blocks that we are currently not considering:
     # https://github.com/giampaolo/psutil/issues/829#issuecomment-223750462
     return DiskUsage( total:total, used:used, free:avail_to_user, percent:usage_percent_user)
+
+
+proc ioctlsocket*( iface_name: string, ioctl: uint, ifr: var ifreq ): bool =
+    ##
+    let sock = socket(posix.AF_INET, posix.SOCK_DGRAM, 0)
+    if sock == SocketHandle(-1): return false
+    var interface_name = iface_name
+    copyMem( addr ifr.ifr_ifrn.ifrn_name, addr(interface_name[0]), len(iface_name) )
+
+    let ret = ioctl(sock.cint, ioctl, addr ifr)
+    if ret == -1: return false
+    discard close( sock )
+    return true
+
+
+proc net_if_mtu*( name: string ): int =
+    ## Return NIC MTU.
+    ## References: http://www.i-scream.org/libstatgrab/
+
+    var ifr: ifreq
+    if ioctlsocket( name, SIOCGIFMTU, ifr ):
+        result = ifr.ifr_ifru.ifru_mtu
+    else:
+        result = 0
+
+
+proc net_if_flags*( name: string ): bool =
+    ## Inspect NIC flags, returns a bool indicating whether the NIC is running.
+    ## References: http://www.i-scream.org/libstatgrab/
+
+    var ifr: ifreq
+    if ioctlsocket( name, SIOCGIFFLAGS, ifr ):
+        result = (ifr.ifr_ifru.ifru_flags and IFF_UP.cshort) != 0
+    else:
+        result = false
+

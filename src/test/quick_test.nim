@@ -25,4 +25,4 @@ echo_proc( disk_partitions( all=false ) )
 echo_proc( disk_partitions( all=true ) )
 echo_proc( net_io_counters() )
 echo_proc( net_io_counters_total() )
-
+echo_proc( net_if_stats() )

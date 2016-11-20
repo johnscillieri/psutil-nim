@@ -3,7 +3,6 @@ Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
     disk_io_counters(perdisk=False)
     net_connections(kind='inet')
-    net_if_stats()
     process_iter()
     wait_procs(procs, timeout=None, callback=None)
 ]##
@@ -242,3 +241,4 @@ export disk_usage
 export swap_memory
 export disk_partitions
 export net_io_counters
+export net_if_stats
