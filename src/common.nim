@@ -78,6 +78,18 @@ type NICStats* = object of RootObj
     speed*: int
     mtu*: int
 
+type DiskIO* = object of RootObj
+    read_count*: int
+    write_count*: int
+    read_bytes*: int
+    write_bytes*: int
+    read_time*: int
+    write_time*: int
+    when defined(linux):
+        read_merged_count*: int
+        write_merged_count*: int
+        busy_time*: int
+
 
 ################################################################################
 proc usage_percent*[T](used: T, total: T, places=0): float =

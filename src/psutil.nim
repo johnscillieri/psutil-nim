@@ -242,3 +242,4 @@ export swap_memory
 export disk_partitions
 export net_io_counters
 export net_if_stats
+export per_disk_io_counters
