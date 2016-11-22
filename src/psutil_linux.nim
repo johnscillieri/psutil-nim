@@ -510,7 +510,7 @@ proc disk_partitions*(all=false): seq[DiskPartition] =
     discard endmntent( file )
 
 
-proc net_io_counters*(): TableRef[string, NetIO] =
+proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
     ## Return network I/O statistics for every network interface
     ## installed on the system as a dict of raw tuples.
     result = newTable[string, NetIO]()
@@ -554,7 +554,7 @@ proc net_if_duplex_speed*( name: string ): tuple[ duplex: NicDuplex, speed: int 
 
 proc net_if_stats*(): TableRef[string, NICstats] =
     ## Get NIC stats (isup, duplex, speed, mtu).
-    let names = toSeq( net_io_counters().keys() )
+    let names = toSeq( per_nic_net_io_counters().keys() )
     result = newTable[string, NICStats]()
     for name in names:
         let (duplex, speed) = net_if_duplex_speed( name )

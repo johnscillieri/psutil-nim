@@ -1,7 +1,6 @@
 ##[
 Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
-    disk_io_counters(perdisk=False)
     net_connections(kind='inet')
     process_iter()
     wait_procs(procs, timeout=None, callback=None)
@@ -199,7 +198,7 @@ proc virtual_memory*(): VirtualMemory =
     g_total_phymem = result.total
 
 
-proc net_io_counters_total*(): NetIO =
+proc net_io_counters*(): NetIO =
     ## Return total network I/O statistics including the following fields:
     ##  - bytes_sent:   number of bytes sent
     ##  - bytes_recv:   number of bytes received
@@ -211,7 +210,7 @@ proc net_io_counters_total*(): NetIO =
     ##  - dropout:      total number of outgoing packets which were dropped
     ##                  (always 0 on OSX and BSD)
 
-    let raw_counters = platform.net_io_counters()
+    let raw_counters = platform.per_nic_net_io_counters()
     if len(raw_counters) == 0:
         raise newException( SystemError, "couldn't find any network interface")
 
@@ -224,6 +223,40 @@ proc net_io_counters_total*(): NetIO =
         result.errout += counter.errout
         result.dropin += counter.dropin
         result.dropout += counter.dropout
+
+
+proc disk_io_counters*: DiskIO =
+    ## Return system disk I/O statistics as a namedtuple including
+    ## the following fields:
+    ##  - read_count:  number of reads
+    ##  - write_count: number of writes
+    ##  - read_bytes:  number of bytes read
+    ##  - write_bytes: number of bytes written
+    ##  - read_time:   time spent reading from disk (in milliseconds)
+    ##  - write_time:  time spent writing to disk (in milliseconds)
+    ## If perdisk is True return the same information for every
+    ## physical disk installed on the system as a dictionary
+    ## with partition names as the keys and the namedtuple
+    ## described above as the values.
+    ## On recent Windows versions 'diskperf -y' command may need to be
+    ## executed first otherwise this function won't find any disk.
+
+    let counters = per_disk_io_counters()
+    if len( counters ) == 0:
+        raise newException( SystemError, "couldn't find any physical disk")
+
+    for counter in counters.values():
+        result.read_count += counter.read_count
+        result.write_count += counter.write_count
+        result.read_bytes += counter.read_bytes
+        result.write_bytes += counter.write_bytes
+        result.read_time += counter.read_time
+        result.write_time += counter.write_time
+
+        when defined(linux):
+            result.read_merged_count += counter.read_merged_count
+            result.write_merged_count += counter.write_merged_count
+            result.busy_time += counter.busy_time
 
 
 ################################################################################
@@ -241,5 +274,7 @@ export disk_usage
 export swap_memory
 export disk_partitions
 export net_io_counters
+export per_nic_net_io_counters
 export net_if_stats
+export disk_io_counters
 export per_disk_io_counters
