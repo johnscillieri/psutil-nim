@@ -1,10 +1,10 @@
 ## List all mounted disk partitions a-la "df -h" command.
-## $ python scripts/disk_usage.py
-## Device               Total     Used     Free  Use %      Type  Mount
-## /dev/sdb3            18.9G    14.7G     3.3G    77%      ext4  /
-## /dev/sda6           345.9G    83.8G   244.5G    24%      ext4  /home
-## /dev/sda1           296.0M    43.1M   252.9M    14%      vfat  /boot/efi
-## /dev/sda2           600.0M   312.4M   287.6M    52%   fuseblk  /media/Recovery
+## $ nim c -r disk_usage.nim
+## Device               Total      Used     Free   Use %      Type  Mount
+## /dev/sdb3           18.9GB    14.7GB     3.3GB    77%      ext4  /
+## /dev/sda6          345.9GB    83.8GB   244.5GB    24%      ext4  /home
+## /dev/sda1          296.0MB    43.1MB   252.9MB    14%      vfat  /boot/efi
+## /dev/sda2          600.0MB   312.4MB   287.6MB    52%   fuseblk  /media/Recovery
 
 import strutils
 import stringinterpolation

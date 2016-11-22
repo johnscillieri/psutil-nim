@@ -1,8 +1,9 @@
 ## A clone of 'free' cmdline utility.
-## $ python scripts/free.py
+## $ nim c -r free.nim
 ##              total       used       free     shared    buffers      cache
-## Mem:      10125520    8625996    1499524          0     349500    3307836
-## Swap:            0          0          0
+## Mem:       9198316    4714076     374348     406372     363140    3746752
+## Swap:      9424892    1091644    8333248
+
 
 import stringinterpolation
 import ../psutil
