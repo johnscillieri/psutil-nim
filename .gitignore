@@ -2,5 +2,3 @@ nimcache/
 nimsuggest.log
 temp.c
 temp.nim
-src/test/quick_test
-src/test/test_posix
