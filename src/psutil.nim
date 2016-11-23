@@ -278,3 +278,4 @@ export per_nic_net_io_counters
 export net_if_stats
 export disk_io_counters
 export per_disk_io_counters
+export NicDuplex
