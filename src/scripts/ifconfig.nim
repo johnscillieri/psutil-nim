@@ -46,7 +46,7 @@ import ../psutil
 var af_map = {
     AF_INET: "IPv4",
     AF_INET6: "IPv6",
-    17.cint: "MAC",
+    AF_PACKET.cint: "MAC",
 }.toTable()
 
 var duplex_map = {

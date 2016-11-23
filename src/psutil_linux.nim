@@ -19,12 +19,12 @@ const UT_NAMESIZE = 32
 const UT_HOSTSIZE = 256
 const USER_PROCESS = 7  # Normal process.
 
-var MOUNTED {.importc, header: "<mntent.h>".}: cstring
-var DUPLEX_FULL {.importc, header: "<linux/ethtool.h>".}: uint8
-var DUPLEX_HALF {.importc, header: "<linux/ethtool.h>".}: uint8
-var DUPLEX_UNKNOWN {.importc, header: "<linux/ethtool.h>".}: uint8
-var ETHTOOL_GSET {.importc, header: "<linux/ethtool.h>".}: uint8
-var SIOCETHTOOL {.importc, header: "<linux/sockios.h>".}: uint16
+var MOUNTED {.header: "<mntent.h>".}: cstring
+var DUPLEX_FULL {.header: "<linux/ethtool.h>".}: uint8
+var DUPLEX_HALF {.header: "<linux/ethtool.h>".}: uint8
+var DUPLEX_UNKNOWN {.header: "<linux/ethtool.h>".}: uint8
+var ETHTOOL_GSET {.header: "<linux/ethtool.h>".}: uint8
+var SIOCETHTOOL {.header: "<linux/sockios.h>".}: uint16
 
 let CLOCK_TICKS = sysconf( SC_CLK_TCK )
 let PAGESIZE = sysconf( SC_PAGE_SIZE )

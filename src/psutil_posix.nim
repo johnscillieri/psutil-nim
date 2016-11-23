@@ -10,13 +10,13 @@ const IFHWADDRLEN* = 6
 const IF_NAMESIZE* = 16
 const IFNAMSIZ* = IF_NAMESIZE
 
-var AF_PACKET* {.importc, header: "<sys/socket.h>".}: cint
-var IFF_BROADCAST* {.importc, header: "<net/if.h>".}: uint
-var IFF_POINTOPOINT* {.importc, header: "<net/if.h>".}: uint
-var IFF_UP {.importc, header: "<linux/if.h>".}: uint
-var NI_MAXHOST* {.importc, header: "<net/if.h>".}: cint
-var SIOCGIFFLAGS {.importc, header: "<linux/sockios.h>".}: uint
-var SIOCGIFMTU {.importc, header: "<linux/sockios.h>".}: uint
+var AF_PACKET* {.header: "<sys/socket.h>".}: cint
+var IFF_BROADCAST* {.header: "<net/if.h>".}: uint
+var IFF_POINTOPOINT* {.header: "<net/if.h>".}: uint
+var IFF_UP {.header: "<linux/if.h>".}: uint
+var NI_MAXHOST* {.header: "<net/if.h>".}: cint
+var SIOCGIFFLAGS {.header: "<linux/sockios.h>".}: uint
+var SIOCGIFMTU {.header: "<linux/sockios.h>".}: uint
 
 type ifaddrs = object
     pifaddrs: ptr ifaddrs # Next item in list
