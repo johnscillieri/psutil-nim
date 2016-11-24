@@ -1,5 +1,6 @@
 import algorithm
 import math
+import net
 import os
 import posix
 import sequtils
@@ -25,6 +26,39 @@ var DUPLEX_HALF {.header: "<linux/ethtool.h>".}: uint8
 var DUPLEX_UNKNOWN {.header: "<linux/ethtool.h>".}: uint8
 var ETHTOOL_GSET {.header: "<linux/ethtool.h>".}: uint8
 var SIOCETHTOOL {.header: "<linux/sockios.h>".}: uint16
+
+let tcp4 = ( "tcp", posix.AF_INET, posix.SOCK_STREAM )
+let tcp6 = ( "tcp6", posix.AF_INET6, posix.SOCK_STREAM )
+let udp4 = ( "udp", posix.AF_INET, posix.SOCK_DGRAM )
+let udp6 = ( "udp6", posix.AF_INET6, posix.SOCK_DGRAM )
+let unix = ( "unix", posix.AF_UNIX, posix.SOCK_RAW ) # raw probably isn't right
+let tmap = {
+    "all": @[tcp4, tcp6, udp4, udp6, unix],
+    "tcp": @[tcp4, tcp6],
+    "tcp4": @[tcp4,],
+    "tcp6": @[tcp6,],
+    "udp": @[udp4, udp6],
+    "udp4": @[udp4,],
+    "udp6": @[udp6,],
+    "unix": @[unix,],
+    "inet": @[tcp4, tcp6, udp4, udp6],
+    "inet4": @[tcp4, udp4],
+    "inet6": @[tcp6, udp6],
+}.toOrderedTable()
+
+const TCP_STATUSES = {
+    "01": "ESTABLISHED",
+    "02": "SYN_SENT",
+    "03": "SYN_RECV",
+    "04": "FIN_WAIT1",
+    "05": "FIN_WAIT2",
+    "06": "TIME_WAIT",
+    "07": "CLOSE",
+    "08": "CLOSE_WAIT",
+    "09": "LAST_ACK",
+    "0A": "LISTEN",
+    "0B": "CLOSING"
+}.toOrderedTable()
 
 let CLOCK_TICKS = sysconf( SC_CLK_TCK )
 let PAGESIZE = sysconf( SC_PAGE_SIZE )
@@ -629,3 +663,189 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
                                    read_time:rtime, write_time:wtime,
                                    read_merged_count:reads_merged, write_merged_count:writes_merged,
                                    busy_time:busy_time )
+
+
+
+proc get_proc_inodes( pid: int ): OrderedTable[string, seq[tuple[pid:int, fd:int]]] =
+    result = initOrderedTable[string, seq[tuple[pid:int, fd:int]]]()
+    for fd in os.walkPattern( "/proc/$1/fd/*" % $pid ):
+        var inode = expandSymlink( fd )
+        if inode.startswith( "socket:[" ):
+            # the process is using a socket
+            inode = inode[8..inode.len-2]
+            let data = ( pid: pid, fd: os.extractFilename( fd ).parseInt() )
+            result.mgetOrPut( inode, newSeq[tuple[pid:int, fd:int]]() ).add( data )
+    return result
+
+
+proc get_all_inodes(): OrderedTable[string, seq[tuple[pid:int, fd:int]]] =
+    result = initOrderedTable[string, seq[tuple[pid:int, fd:int]]]()
+    for pid in pids():
+        try:
+            let proc_inodes = get_proc_inodes( pid )
+            for key, value in proc_inodes:
+                result[key] = value
+        except OSError:
+            # os.listdir() is gonna raise a lot of access denied
+            # exceptions in case of unprivileged user; that's fine
+            # as we'll just end up returning a connection with PID
+            # and fd set to None anyway.
+            # Both netstat -an and lsof does the same so it's
+            # unlikely we can do any better.
+            # ENOENT just means a PID disappeared on us.
+            let err = ( ref OSError ) getCurrentException()
+            if err.errorCode.cint in {ENOENT, ESRCH, EPERM, EACCES} == false:
+                raise
+    return result
+
+
+proc parseHexIP( ip: string, family: int ): string =
+    if family == posix.AF_INET:
+        var ip_int = parseHexInt( ip ).uint32
+        result = $inet_ntoa( InAddr( s_addr:ip_int ) )
+
+    elif family == posix.AF_INET6:
+        var ip_address = IpAddress( family: IpAddressFamily.IPv6 )
+        for i in 0..3:
+            let offset = i * 8
+            let piece = ip[offset..offset+7]
+            var int_piece = parseHexInt( piece ).uint32
+            copyMem( addr( ip_address.address_v6[int(offset/2)] ), addr int_piece, 4 )
+
+        result = $ip_address
+
+    else:
+        result = ip
+
+
+proc decode_address( address: string, family: int ): tuple[ip:string, port:Port] =
+    ## Accept an "ip:port" address as displayed in /proc/net/*
+    ## and convert it into a human readable form, like:
+    ## "0500000A:0016" -> ( "10.0.0.5", 22 )
+    ## "0000000000000000FFFF00000100007F:9E49" -> ( "::ffff:127.0.0.1", 40521 )
+    ## The IP address portion is a little or big endian four-byte
+    ## hexadecimal number; that is, the least significant byte is listed
+    ## first, so we need to reverse the order of the bytes to convert it
+    ## to an IP address.
+    ## The port is represented as a two-byte hexadecimal number.
+    ## Reference:
+    ## http://linuxdevcenter.com/pub/a/linux/2000/11/16/LinuxAdmin.html
+    var ipPortPair = address.split( ":" )
+    let ip = parseHexIP( ipPortPair[0], family )
+    let port = Port( parseHexInt( ipPortPair[1] ) )
+    return ( ip, port )
+
+
+iterator process_inet( file: string, family: int, socketType: int, inodes : OrderedTable[string, seq[tuple[pid:int, fd:int]]], filter_pid= -1 ) : Connection =
+    var laddr, raddr, status, inode : string
+    var pid, fd : int
+
+    ## Parse /proc/net/tcp* and /proc/net/udp* files.
+    if file.endsWith( "6" ) and not os.fileExists( file ):
+        # IPv6 not supported
+        yield Connection()
+
+    for line in file.lines:
+        try:
+            let strings = line.splitWhitespace()[..10]
+            laddr = strings[1]
+            raddr = strings[2]
+            status = strings[3]
+            inode = strings[9]
+            if laddr == "local_address":
+                continue
+
+        except ValueError:
+            raise
+
+        if inodes.hasKey(inode):
+            # # We assume inet sockets are unique, so we error
+            # # out if there are multiple references to the
+            # # same inode. We won't do this for UNIX sockets.
+            # if len( inodes[inode]) > 1 and family != socket.AF_UNIX:
+            #     raise ValueError( "ambiguos inode with multiple "
+            #                      "PIDs references" )
+            pid = inodes[inode][0].pid
+            fd = inodes[inode][0].fd
+
+        else:
+            pid = -1
+            fd = -1
+
+        if filter_pid != -1 and filter_pid != pid:
+            continue
+
+        else:
+            if socketType == posix.SOCK_STREAM:
+                status = TCP_STATUSES[status]
+            else:
+                status = "NONE"
+            let lpair = decode_address( laddr, family )
+            let rpair = decode_address( raddr, family )
+            yield Connection( fd: fd, family:family, `type`: socketType,
+                              laddr:lpair.ip, lport:lpair.port,
+                              raddr:rpair.ip, rport:rpair.port,
+                              status:status, pid:pid )
+
+
+iterator process_unix(  file: string, family: int, inodes : OrderedTable[string, seq[tuple[pid:int, fd:int]]], filter_pid= -1 ): Connection =
+    ## Parse /proc/net/unix files
+    for line in file.lines:
+        let tokens = line.splitWhitespace()
+        var socketType: string
+        var inode: string
+        try:
+            socketType = tokens[4]
+            inode = tokens[6]
+        except ValueError:
+            if not( " " in line ):
+                # see: https://github.com/giampaolo/psutil/issues/766
+                continue
+            raise newException(
+                SystemError, "error while parsing $1; malformed line $2" % [file, line] )
+
+        # We're parsing the header, skip it
+        if socketType == "Type": continue
+
+        var pairs: seq[tuple[pid:int, fd:int]]
+        if inodes.hasKey(inode):
+            # With UNIX sockets we can have a single inode
+            # referencing many file descriptors.
+            pairs = inodes[inode]
+        else:
+            pairs = @[( -1, -1 )]
+
+        for pid_fd_tuple in pairs:
+            let (pid, fd) = pid_fd_tuple
+            if filter_pid != -1 and filter_pid != pid:
+                continue
+
+            let path = if len( tokens ) == 8: tokens[7] else: ""
+            yield Connection( fd: fd, family: family, `type`: parseInt(socketType),
+                              laddr: path, status: "NONE", pid: pid )
+
+
+proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
+    var inodes : OrderedTable[string, seq[tuple[pid:int, fd:int]]]
+    result = newSeq[Connection]()
+
+    if not tmap.hasKey( kind ):
+        return result
+
+    if pid != -1:
+        inodes = get_proc_inodes( pid )
+        if inodes.len == 0: # no connections for this process
+            return result
+    else:
+        inodes = get_all_inodes()
+
+    let conTypes = tmap[kind]
+    for f, family, socketType in conTypes.items():
+        if family in {posix.AF_INET, posix.AF_INET6}:
+            for conn in process_inet( "/proc/net/$1" % f, family, socketType, inodes, filter_pid=pid ):
+                result.add( conn )
+        else:
+            for conn in process_unix( "/proc/net/$1" % f, family, inodes, filter_pid=pid ):
+                result.add( conn )
+
+    return result

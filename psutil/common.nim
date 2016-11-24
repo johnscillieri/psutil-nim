@@ -1,4 +1,5 @@
 import math
+import nativesockets
 
 
 ################################################################################
@@ -89,6 +90,17 @@ type DiskIO* = object of RootObj
         read_merged_count*: int
         write_merged_count*: int
         busy_time*: int
+
+type Connection* = object of RootObj
+    fd*: int
+    family*: int
+    `type`*: int
+    laddr*: string
+    lport*: Port
+    raddr*: string
+    rport*: Port
+    status*: string
+    pid*: int
 
 
 ################################################################################

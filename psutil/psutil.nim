@@ -262,6 +262,9 @@ proc disk_io_counters*: DiskIO =
 ################################################################################
 export tables
 
+export NicDuplex
+export AF_PACKET
+
 export net_if_addrs
 export boot_time
 export users
@@ -278,5 +281,4 @@ export per_nic_net_io_counters
 export net_if_stats
 export disk_io_counters
 export per_disk_io_counters
-export NicDuplex
-export AF_PACKET
+export net_connections
