@@ -2,6 +2,8 @@
 
 > Port of Python's [psutil](https://github.com/giampaolo/psutil) to Nim
 
+## Warning: This package is currently in beta and only works on Linux! Pull requests with bug fixes and support for other platforms are welcome!
+
 ## Table of Contents
 
 - [Background](#background)
@@ -12,20 +14,23 @@
 
 ## Background
 
-I love Python and [psutil](https://github.com/giampaolo/psutil) and all the
-power they provide but bundling a Python app is a pain. Having a psutil library
-in Nim seemed like the logical next step.
+I love Python and [psutil](https://github.com/giampaolo/psutil) but bundling a
+Python app is a pain. Having a psutil library in Nim seemed like the logical
+next step.
 
 ## Install
 
-There's really no good way to install right now. Clone/download the repo and
-include it in your project tree. Once I have a somewhat complete Linux version
-I'll put it up on Nimble.
+``` nimble install psutil ```
+
+This package is in beta and currently only works on Linux. Most of the
+process-specific functionality hasn't been implemented yet. I'll bump it to 1.0
+once I have full Linux parity with psutil and then I'll start adding platforms.
 
 ## Usage
 
 Just some basic usage below until I get the example apps working and can mirror
-what's in psutil's documentation.
+what's in psutil's documentation. Take a look at the scripts folder for some
+basic examples as well.
 
 ```
 import psutil
