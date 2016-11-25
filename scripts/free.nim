@@ -6,7 +6,7 @@
 
 
 import stringinterpolation
-import ../psutil/psutil
+import psutil
 
 proc main() =
     let virt = psutil.virtual_memory()

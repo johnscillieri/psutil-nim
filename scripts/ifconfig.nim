@@ -40,7 +40,7 @@ else:
 
 import stringinterpolation
 
-import ../psutil
+import psutil
 
 
 var af_map = {

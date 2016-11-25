@@ -8,7 +8,7 @@
 
 import strutils
 import stringinterpolation
-import ../psutil
+import psutil
 
 proc main() =
     echo( format( "%-25s %10s %10s %10s %5s%% %9s  %s",

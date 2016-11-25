@@ -22,7 +22,7 @@
 
 import strutils
 import stringinterpolation
-import ../psutil
+import psutil
 
 proc formatSize( bytes: int, precision: range[1..3] ): string =
     result = formatSize( bytes, includeSpace=true, prefix=bpColloquial )
