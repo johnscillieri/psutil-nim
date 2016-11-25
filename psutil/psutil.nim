@@ -1,7 +1,6 @@
 ##[
 Linux To Do -
     cpu_times_percent(interval=None, percpu=False)
-    net_connections(kind='inet')
     process_iter()
     wait_procs(procs, timeout=None, callback=None)
 ]##
