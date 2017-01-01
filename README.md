@@ -42,7 +42,7 @@ echo users()
 
 ## Contribute
 
-PRs accepted!
+PRs accepted! Adding a single function to any platform is a huge help and can usually be done with less than an hour of work.
 
 ## License
 
