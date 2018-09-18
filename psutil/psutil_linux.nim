@@ -148,12 +148,12 @@ proc getmntent(stream: File): mntent {.header: "<mntent.h>".}
 proc endmntent(streamp: File): int {.header: "<mntent.h>".}
 
 
-proc boot_time*(): float =
-    ## Return the system boot time expressed in seconds since the epoch
+proc boot_time*(): int =
+    ## Return the system boot time expressed in seconds since the epoch, Integer type.
     let stat_path = PROCFS_PATH / "stat"
     for line in stat_path.lines:
-        if line.startswith("btime"):
-            return line.strip().split()[1].parseFloat()
+        if line.strip.startswith("btime"):
+            return line.strip.split()[1].parseInt()
 
     raise newException(OSError, "line 'btime' not found in $1" % stat_path)
 
