@@ -1,15 +1,6 @@
-import algorithm
-import math
-import net
-import os
-import posix
-import sequtils
-import sets
-import strutils
-import tables
+import algorithm, math, net, os, posix, sequtils, sets, strutils, tables, times
 
-import common
-import psutil_posix
+import common, psutil_posix
 
 
 ################################################################################
@@ -157,6 +148,9 @@ proc boot_time*(): int =
 
     raise newException(OSError, "line 'btime' not found in $1" % stat_path)
 
+proc uptime*(): int =
+  ## Return the system uptime expressed in seconds, Integer type.
+  epochTime().int - boot_time()
 
 proc pids*(): seq[int] =
     ## Returns a list of PIDs currently running on the system.

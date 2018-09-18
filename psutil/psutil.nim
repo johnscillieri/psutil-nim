@@ -13,10 +13,10 @@ import tables
 import common
 
 when defined(posix):
-    import psutil_posix
+  import psutil_posix
 
 when defined(linux):
-    import psutil_linux as platform
+  import psutil_linux as platform
 
 
 ################################################################################
@@ -266,6 +266,7 @@ export AF_PACKET
 
 export net_if_addrs
 export boot_time
+export uptime
 export users
 export pids
 export cpu_times

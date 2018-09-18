@@ -5,6 +5,7 @@ template echo_proc(x: untyped) =
 
 echo_proc net_if_addrs()
 echo_proc boot_time()
+echo_proc uptime()
 echo_proc users()
 echo_proc pids()
 echo_proc cpu_times()
