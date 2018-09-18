@@ -210,23 +210,23 @@ proc users*(): seq[User] =
     endutent()
 
 
-proc parse_cpu_time_line( text: string ): CPUTimes =
-    let values = text.splitWhitespace()
-    let times = mapIt( values[1..<len(values)], parseFloat(it) / CLOCK_TICKS.float)
+proc parse_cpu_time_line(text: string): CPUTimes =
+    let values = text.strip.splitWhitespace()
+    let times = mapIt(values[1..len(values) - 1], parseFloat(it) / CLOCK_TICKS.float)
     if len(times) >= 7:
-        result.user = times[0]
-        result.nice = times[1]
-        result.system = times[2]
-        result.idle = times[3]
-        result.iowait = times[4]
-        result.irq = times[5]
-        result.softirq = times[6]
+        result.user = round(times[0], 2)
+        result.nice = round(times[1], 2)
+        result.system = round(times[2], 2)
+        result.idle = round(times[3], 2)
+        result.iowait = round(times[4], 2)
+        result.irq = round(times[5], 2)
+        result.softirq = round(times[6], 2)
     if len(times) >= 8:
-        result.steal = times[7]
+        result.steal = round(times[7], 2)
     if len(times) >= 9:
-        result.guest = times[8]
+        result.guest = round(times[8], 2)
     if len(times) >= 10:
-        result.guest_nice = times[9]
+        result.guest_nice = round(times[9], 2)
 
 
 proc cpu_times*(): CPUTimes =
@@ -235,7 +235,7 @@ proc cpu_times*(): CPUTimes =
     #  [guest_nice]]])
     # Last 3 fields may not be available on all Linux kernel versions.
     for line in lines( PROCFS_PATH / "stat" ):
-        result = parse_cpu_time_line( line )
+        result = parse_cpu_time_line(line)
         break
 
 
