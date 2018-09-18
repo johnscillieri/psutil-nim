@@ -13,7 +13,6 @@ type Address* = object of RootObj
 type User* = object
     name*: string
     terminal*: string
-    host*: string
     started*: float
 
 type CPUTimes* = object of RootObj
@@ -107,7 +106,7 @@ type Connection* = object of RootObj
 proc usage_percent*[T](used: T, total: T, places=0): float =
     ## Calculate percentage usage of 'used' against 'total'.
     try:
-        result = (used / total) * 100
+        result = (used.int / total.int) * 100
     except DivByZeroError:
         result = if used is float or total is float: 0.0 else: 0
     if places != 0:

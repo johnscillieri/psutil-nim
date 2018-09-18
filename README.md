@@ -46,4 +46,7 @@ PRs accepted! Adding a single function to any platform is a huge help and can us
 
 ## License
 
-BSD © John Scillieri
+- BSD
+
+Original Author:   John Scillieri.
+Current Developer: Juan Carlos.

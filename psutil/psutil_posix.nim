@@ -86,7 +86,7 @@ proc pid_exists*( pid: int ): bool =
         # a process with id 0.
         return true
 
-    let ret_code = kill( pid, 0 )
+    let ret_code = kill( pid.int32, 0 )
 
     if ret_code == 0: return true
 
@@ -130,9 +130,9 @@ proc net_if_addrs*(): Table[string, seq[Address]] =
         let address = psutil_convert_ipaddr( current.ifa_addr, family )
         let netmask = psutil_convert_ipaddr( current.ifa_netmask, family )
         let bc_or_ptp = psutil_convert_ipaddr( current.ifu_broadaddr, family )
-        let broadcast = if (current.ifa_flags and IFF_BROADCAST) != 0: bc_or_ptp else: nil
+        let broadcast = if (current.ifa_flags and IFF_BROADCAST) != 0: bc_or_ptp else: ""
         # ifu_broadcast and ifu_ptp are a union in C, but we don't really care what C calls it
-        let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: nil
+        let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: ""
 
         if not( name in result ): result[name] = newSeq[Address]()
         result[name].add( Address( family: family,
@@ -152,7 +152,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
     var resultLen: Socklen = NI_MAXHOST.uint32
 
     if address == nil:
-        return nil
+        return ""
 
     if family == AF_INET or family == AF_INET6:
         if family == AF_INET:
@@ -165,7 +165,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
             # // XXX we get here on FreeBSD when processing 'lo' / AF_INET6
             # // broadcast. Not sure what to do other than returning None.
             # // ifconfig does not show anything BTW.
-            return nil
+            return ""
 
         else:
             return result.strip(chars=Whitespace + {'\x00'})
@@ -190,7 +190,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
 
     else:
         # unknown family
-        return nil
+        return ""
 
 
 proc disk_usage*(path: string): DiskUsage =
@@ -224,7 +224,7 @@ proc disk_usage*(path: string): DiskUsage =
     # NB: the percentage is -5% than what shown by df due to
     # reserved blocks that we are currently not considering:
     # https://github.com/giampaolo/psutil/issues/829#issuecomment-223750462
-    return DiskUsage( total:total, used:used, free:avail_to_user, percent:usage_percent_user)
+    return DiskUsage(total: total.int, used: used.int, free: avail_to_user.int, percent: usage_percent_user.float)
 
 
 proc ioctlsocket*( iface_name: string, ioctl: uint, ifr: var ifreq ): bool =

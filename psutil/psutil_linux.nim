@@ -200,10 +200,10 @@ proc users*(): seq[User] =
         if hostname == ":0.0" or hostname == ":0":
             hostname = "localhost"
 
-        let user_tuple = User( name:($ut.ut_user),
-                               terminal:($ut.ut_line),
-                               host:hostname,
+        let user_tuple = User( name:($ut.ut_user.join().strip.replace("\x00", "")),
+                               terminal:($ut.ut_line.join().strip.replace("\x00", "")),
                                started:ut.ut_tv.tv_sec.float )
+        echo user_tuple
         result.add( user_tuple )
         ut = getutent()
 
@@ -552,7 +552,8 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         if not( ":" in line ): continue
         let colon = line.rfind(':')
         let name = line[..colon].strip()
-        let fields = mapIt( line[(colon + 1)..len(line)].splitWhitespace(), parseInt(it) )
+        let lst = line[(colon + 1)..len(line) - 1].strip.replace("\x00", "").splitWhitespace
+        let fields = mapIt(lst, parseInt(it))
 
         result[name] = NetIO( bytes_sent: fields[8],
                               bytes_recv: fields[0],
@@ -802,7 +803,7 @@ iterator process_unix(  file: string, family: int, inodes : OrderedTable[string,
                 # see: https://github.com/giampaolo/psutil/issues/766
                 continue
             raise newException(
-                SystemError, "error while parsing $1; malformed line $2" % [file, line] )
+                Exception, "error while parsing $1; malformed line $2" % [file, line] )
 
         # We're parsing the header, skip it
         if socketType == "Type": continue
