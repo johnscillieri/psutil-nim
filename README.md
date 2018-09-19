@@ -47,6 +47,9 @@ If you are running on CentOS or RedHat you may or may not find errors with the N
 complaining about missing Linux C Headers `sockios.h` to Compile,
 this is not a Bug on the code but that Distro not having development libraries or having too old versions of it.
 
+You can try installing the package `kernel-headers` for CentOS/RedHat,
+to see if that fixes the problem about missing libraries.
+
 If you know how to fix that Distro-specific detail feel free to send pull requests.
 
 The failing functions are:
