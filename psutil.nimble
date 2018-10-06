@@ -6,8 +6,9 @@ description   = "psutil is a cross-platform library for retrieving information o
 license       = "BSD"
 
 srcDir        = "psutil"
+skipDirs      = @["tests"]
 
 
 # Dependencies
 
-requires "nim >= 0.18.0"
+requires "nim >= 0.19.0"
