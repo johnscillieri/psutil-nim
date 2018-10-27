@@ -1,10 +1,8 @@
-import math
-import nativesockets
+import math, nativesockets, posix
 
-
-################################################################################
+# type TSa_Family* {.importc: "sa_family_t", header: "<sys/socket.h>".} = cint
 type Address* = object of RootObj
-    family*: int
+    family*: posix.TSa_Family  # int
     address*: string
     netmask*: string
     broadcast*: string

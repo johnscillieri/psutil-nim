@@ -1,11 +1,7 @@
-import posix
-import strutils
-import tables
-
+import posix, strutils, tables
 import common
 
 
-################################################################################
 const IFHWADDRLEN* = 6
 const IF_NAMESIZE* = 16
 const IFNAMSIZ* = IF_NAMESIZE
@@ -73,7 +69,7 @@ proc ioctl*(f: FileHandle, device: uint, data: pointer): int {.header: "<sys/ioc
 proc getifaddrs( ifap: var ptr ifaddrs ): int {.header: "<ifaddrs.h>".}
 proc freeifaddrs( ifap: ptr ifaddrs ): void {.header: "<ifaddrs.h>".}
 
-proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string
+proc psutil_convert_ipaddr(address: ptr SockAddr, family: posix.TSa_Family): string
 
 
 proc pid_exists*( pid: int ): bool =
@@ -135,7 +131,7 @@ proc net_if_addrs*(): Table[string, seq[Address]] =
         let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: ""
 
         if not( name in result ): result[name] = newSeq[Address]()
-        result[name].add( Address( family: family,
+        result[name].add( Address( family: family.uint16, # psutil_posix.nim(138, 42) Error: type mismatch: got <int32> but expected 'TSa_Family = uint16'
                                    address: address,
                                    netmask: netmask,
                                    broadcast: broadcast,
@@ -146,7 +142,7 @@ proc net_if_addrs*(): Table[string, seq[Address]] =
     freeifaddrs( interfaces )
 
 
-proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
+proc psutil_convert_ipaddr(address: ptr SockAddr, family: posix.TSa_Family): string =
     result = newString(NI_MAXHOST)
     var addrlen: Socklen
     var resultLen: Socklen = NI_MAXHOST.uint32
@@ -154,8 +150,8 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
     if address == nil:
         return ""
 
-    if family == AF_INET or family == AF_INET6:
-        if family == AF_INET:
+    if family.int == AF_INET or family.int == AF_INET6:
+        if family.int == AF_INET:
             addrlen = sizeof(SockAddr_in).uint32
         else:
             addrlen = sizeof(SockAddr_in6).uint32
@@ -170,7 +166,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
         else:
             return result.strip(chars=Whitespace + {'\x00'})
 
-    elif defined(linux) and family == AF_PACKET:
+    elif defined(linux) and family.int == AF_PACKET:
         var hw_address = cast[ptr sockaddr_ll](address)
         # TODO - this is going to break on non-Ethernet addresses (e.g. mac firewire - 8 bytes)
         # psutil actually handles this, i just wanted to test that it was working
@@ -182,7 +178,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
                                            hw_address.sll_addr[5].int.toHex(2) ).tolowerAscii()
 
 
-    elif ( defined(freebsd) or defined(openbsd) or defined(darwin) or defined(netbsd) ) and family == AF_PACKET:
+    elif ( defined(freebsd) or defined(openbsd) or defined(darwin) or defined(netbsd) ) and family.int == AF_PACKET:
         # struct sockaddr_dl *dladdr = (struct sockaddr_dl *)addr;
         # len = dladdr->sdl_alen;
         # data = LLADDR(dladdr);
@@ -260,4 +256,3 @@ proc net_if_flags*( name: string ): bool =
         result = (ifr.ifr_ifru.ifru_flags and IFF_UP.cshort) != 0
     else:
         result = false
-
