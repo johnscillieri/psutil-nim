@@ -11,6 +11,7 @@
 ## Inactive   :    2.1G
 ## Buffers    :  341.2M
 ## Cached     :    3.2G
+##
 ## SWAP
 ## ----
 ## Total      :      0B
@@ -21,30 +22,27 @@
 ## Sout       :      0B
 
 import strutils
-import stringinterpolation
+import strformat
 import psutil
 
-proc formatSize( bytes: int, precision: range[1..3] ): string =
-    result = formatSize( bytes, includeSpace=true, prefix=bpColloquial )
-    let items = result.split()
-    let number_parts = items[0].split(".")
-    result = number_parts[0] & "." & number_parts[1][0..<precision] & items[1][0]
-
-proc pprint_object[T]( obj: T ) =
-    for name, value in obj.fieldPairs():
-        var to_print: string
-        if name == "percent":
-            to_print = formatFloat( value.float, precision=3 )
-        else:
-            to_print = formatSize( value.int, precision=1 )
-        echo("%-10s : %7s".format( name.capitalizeAscii(), to_print ) )
+proc pprint_object[T]( obj: T ): void =
+  var n: string
+  var v: float
+  for name, value in obj.fieldPairs:
+    n = $name
+    v = value.float
+    if name == "percent":
+      n = &"{n:<10}:{v.float:>10.1f} %"
+    else:
+      n = &"{n:<10}:{formatSize(v.int, prefix=bpColloquial, includeSpace=true):>12}"
+    echo n
 
 proc main() =
-    echo("MEMORY\n------")
-    pprint_object( psutil.virtual_memory() )
-    echo("\nSWAP\n----")
-    pprint_object( psutil.swap_memory() )
+  echo("MEMORY\n------")
+  pprint_object(psutil.virtual_memory())
+  echo("\nSWAP\n----")
+  pprint_object(psutil.swap_memory())
 
 
 when isMainModule:
-    main()
+  main()
