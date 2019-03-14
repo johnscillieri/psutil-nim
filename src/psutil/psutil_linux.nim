@@ -197,7 +197,6 @@ proc users*(): seq[User] =
         let user_tuple = User( name:($ut.ut_user.join().strip.replace("\x00", "")),
                                terminal:($ut.ut_line.join().strip.replace("\x00", "")),
                                started:ut.ut_tv.tv_sec.float )
-        echo user_tuple
         result.add( user_tuple )
         ut = getutent()
 

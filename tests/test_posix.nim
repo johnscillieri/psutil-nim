@@ -3,7 +3,7 @@ import osproc
 import sequtils
 import strutils
 
-import ../psutil
+import ../src/psutil
 
 
 test "test users":
