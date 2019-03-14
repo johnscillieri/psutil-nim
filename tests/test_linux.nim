@@ -2,7 +2,7 @@ import unittest
 import osproc
 import strutils
 
-import ../psutil
+import ../src/psutil
 
 
 proc vmstat(stat: string): int =
