@@ -506,7 +506,7 @@ proc swap_memory*(): SwapMemory =
 
 proc disk_partitions*(all=false): seq[DiskPartition] =
     ## Return mounted disk partitions as a sequence of DiskPartitions
-    var fstypes = initSet[string]()
+    var fstypes = initHashSet[string]()
     for raw_line in lines( PROCFS_PATH / "filesystems" ):
         let line = raw_line.strip()
         if not line.startswith("nodev"):

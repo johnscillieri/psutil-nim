@@ -224,7 +224,7 @@ proc net_io_counters*(): NetIO =
         result.dropout += counter.dropout
 
 
-proc disk_io_counters*: DiskIO =
+proc disk_io_counters: DiskIO =
     ## Return system disk I/O statistics as a namedtuple including
     ## the following fields:
     ##  - read_count:  number of reads
