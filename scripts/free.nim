@@ -5,31 +5,19 @@
 ## Swap:      9424892    1091644    8333248
 
 
-import stringinterpolation
+import strformat
 import psutil
 
 proc main() =
     let virt = psutil.virtual_memory()
     let swap = psutil.swap_memory()
-    echo("%-7s %10s %10s %10s %10s %10s %10s".format(
-         "", "total", "used", "free", "shared", "buffers", "cache"))
-    echo("%-7s %10s %10s %10s %10s %10s %10s".format(
-        "Mem:",
-        int(virt.total / 1024),
-        int(virt.used / 1024),
-        int(virt.free / 1024),
-        int(virt.shared / 1024),
-        int(virt.buffers / 1024),
-        int(virt.cached / 1024)))
-    echo("%-7s %10s %10s %10s %10s %10s %10s".format(
-        "Swap:",
-        int(swap.total / 1024),
-        int(swap.used / 1024),
-        int(swap.free / 1024),
-        "",
-        "",
-        ""))
-
+    echo(&"""{"total":>17} {"used":>10} {"free":>10} {"shared":>10} """ &
+         &"""{"buffers":>10} {"cache":>10}""")
+    echo(&"Mem: {int(virt.total / 1024):>12} {int(virt.used / 1024):>10} " &
+         &"{int(virt.free / 1024):>10} {int(virt.shared / 1024):>10} " &
+         &"{int(virt.buffers / 1024):>10} {int(virt.cached / 1024):>10}")
+    echo(&"Swap: {int(swap.total / 1024):>11} {int(swap.used / 1024):>10} " &
+         &"{int(swap.free / 1024):>10} ")
 
 when isMainModule:
     main()

@@ -10,13 +10,13 @@ import sequtils
 import strutils
 import tables
 
-import common
+import psutil/common
 
 when defined(posix):
-  import psutil_posix
+  import psutil/psutil_posix
 
 when defined(linux):
-  import psutil_linux as platform
+  import psutil/psutil_linux as platform
 
 
 ################################################################################

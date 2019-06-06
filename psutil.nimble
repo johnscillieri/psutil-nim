@@ -1,11 +1,11 @@
 # Package
 
-version       = "0.5.6"
+version       = "0.5.7"
 author        = "JuanCarlos"
-description   = "psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network)"
+description   = "Psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network)"
 license       = "MIT"
 
-srcDir        = "psutil"
+srcDir        = "src"
 skipDirs      = @["tests"]
 
 
