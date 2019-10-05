@@ -1,14 +1,14 @@
 # Package
 
-version       = "0.5.0"
-author        = "johnscillieri"
-description   = "psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network)"
-license       = "BSD"
+version       = "0.5.7"
+author        = "JuanCarlos"
+description   = "Psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network)"
+license       = "MIT"
 
-srcDir        = "psutil"
+srcDir        = "src"
+skipDirs      = @["tests"]
 
 
 # Dependencies
 
-requires "nim >= 0.15.0"
-
+requires "nim >= 0.20.0"

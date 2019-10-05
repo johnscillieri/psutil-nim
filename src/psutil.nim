@@ -10,13 +10,13 @@ import sequtils
 import strutils
 import tables
 
-import common
+import psutil/common
 
 when defined(posix):
-    import psutil_posix
+  import psutil/psutil_posix
 
 when defined(linux):
-    import psutil_linux as platform
+  import psutil/psutil_linux as platform
 
 
 ################################################################################
@@ -141,7 +141,7 @@ proc per_cpu_percent*( interval=0.0 ): seq[float] =
         tot1 = per_cpu_times()
         sleep( int( interval * 1000 ) )
     else:
-        if tot1 == nil:
+        if not tot1.len > 0:
             # Something bad happened at import time. We'll
             # get a meaningful result on the next call. See:
             # https://github.com/giampaolo/psutil/pull/715
@@ -211,7 +211,7 @@ proc net_io_counters*(): NetIO =
 
     let raw_counters = platform.per_nic_net_io_counters()
     if len(raw_counters) == 0:
-        raise newException( SystemError, "couldn't find any network interface")
+        raise newException( Exception, "couldn't find any network interface")
 
     for _, counter in raw_counters:
         result.bytes_sent += counter.bytes_sent
@@ -224,7 +224,7 @@ proc net_io_counters*(): NetIO =
         result.dropout += counter.dropout
 
 
-proc disk_io_counters*: DiskIO =
+proc disk_io_counters: DiskIO =
     ## Return system disk I/O statistics as a namedtuple including
     ## the following fields:
     ##  - read_count:  number of reads
@@ -242,7 +242,7 @@ proc disk_io_counters*: DiskIO =
 
     let counters = per_disk_io_counters()
     if len( counters ) == 0:
-        raise newException( SystemError, "couldn't find any physical disk")
+        raise newException( Exception, "couldn't find any physical disk")
 
     for counter in counters.values():
         result.read_count += counter.read_count
@@ -266,6 +266,7 @@ export AF_PACKET
 
 export net_if_addrs
 export boot_time
+export uptime
 export users
 export pids
 export cpu_times

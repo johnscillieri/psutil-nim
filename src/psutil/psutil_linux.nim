@@ -1,15 +1,6 @@
-import algorithm
-import math
-import net
-import os
-import posix
-import sequtils
-import sets
-import strutils
-import tables
+import algorithm, math, net, os, posix, sequtils, sets, strutils, tables, times
 
-import common
-import psutil_posix
+import common, psutil_posix
 
 
 ################################################################################
@@ -148,15 +139,18 @@ proc getmntent(stream: File): mntent {.header: "<mntent.h>".}
 proc endmntent(streamp: File): int {.header: "<mntent.h>".}
 
 
-proc boot_time*(): float =
-    ## Return the system boot time expressed in seconds since the epoch
+proc boot_time*(): int =
+    ## Return the system boot time expressed in seconds since the epoch, Integer type.
     let stat_path = PROCFS_PATH / "stat"
     for line in stat_path.lines:
-        if line.startswith("btime"):
-            return line.strip().split()[1].parseFloat()
+        if line.strip.startswith("btime"):
+            return line.strip.split()[1].parseInt()
 
     raise newException(OSError, "line 'btime' not found in $1" % stat_path)
 
+proc uptime*(): int =
+  ## Return the system uptime expressed in seconds, Integer type.
+  epochTime().int - boot_time()
 
 proc pids*(): seq[int] =
     ## Returns a list of PIDs currently running on the system.
@@ -200,9 +194,8 @@ proc users*(): seq[User] =
         if hostname == ":0.0" or hostname == ":0":
             hostname = "localhost"
 
-        let user_tuple = User( name:($ut.ut_user),
-                               terminal:($ut.ut_line),
-                               host:hostname,
+        let user_tuple = User( name:($ut.ut_user.join().strip.replace("\x00", "")),
+                               terminal:($ut.ut_line.join().strip.replace("\x00", "")),
                                started:ut.ut_tv.tv_sec.float )
         result.add( user_tuple )
         ut = getutent()
@@ -210,23 +203,23 @@ proc users*(): seq[User] =
     endutent()
 
 
-proc parse_cpu_time_line( text: string ): CPUTimes =
-    let values = text.splitWhitespace()
-    let times = mapIt( values[1..<len(values)], parseFloat(it) / CLOCK_TICKS.float)
+proc parse_cpu_time_line(text: string): CPUTimes =
+    let values = text.strip.splitWhitespace()
+    let times = mapIt(values[1..len(values) - 1], parseFloat(it) / CLOCK_TICKS.float)
     if len(times) >= 7:
-        result.user = times[0]
-        result.nice = times[1]
-        result.system = times[2]
-        result.idle = times[3]
-        result.iowait = times[4]
-        result.irq = times[5]
-        result.softirq = times[6]
+        result.user = round(times[0], 2)
+        result.nice = round(times[1], 2)
+        result.system = round(times[2], 2)
+        result.idle = round(times[3], 2)
+        result.iowait = round(times[4], 2)
+        result.irq = round(times[5], 2)
+        result.softirq = round(times[6], 2)
     if len(times) >= 8:
-        result.steal = times[7]
+        result.steal = round(times[7], 2)
     if len(times) >= 9:
-        result.guest = times[8]
+        result.guest = round(times[8], 2)
     if len(times) >= 10:
-        result.guest_nice = times[9]
+        result.guest_nice = round(times[9], 2)
 
 
 proc cpu_times*(): CPUTimes =
@@ -235,7 +228,7 @@ proc cpu_times*(): CPUTimes =
     #  [guest_nice]]])
     # Last 3 fields may not be available on all Linux kernel versions.
     for line in lines( PROCFS_PATH / "stat" ):
-        result = parse_cpu_time_line( line )
+        result = parse_cpu_time_line(line)
         break
 
 
@@ -512,7 +505,7 @@ proc swap_memory*(): SwapMemory =
 
 proc disk_partitions*(all=false): seq[DiskPartition] =
     ## Return mounted disk partitions as a sequence of DiskPartitions
-    var fstypes = initSet[string]()
+    var fstypes = initHashSet[string]()
     for raw_line in lines( PROCFS_PATH / "filesystems" ):
         let line = raw_line.strip()
         if not line.startswith("nodev"):
@@ -552,7 +545,8 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         if not( ":" in line ): continue
         let colon = line.rfind(':')
         let name = line[..colon].strip()
-        let fields = mapIt( line[(colon + 1)..len(line)].splitWhitespace(), parseInt(it) )
+        let lst = line[(colon + 1)..len(line) - 1].strip.replace("\x00", "").splitWhitespace
+        let fields = mapIt(lst, parseInt(it))
 
         result[name] = NetIO( bytes_sent: fields[8],
                               bytes_recv: fields[0],
@@ -802,7 +796,7 @@ iterator process_unix(  file: string, family: int, inodes : OrderedTable[string,
                 # see: https://github.com/giampaolo/psutil/issues/766
                 continue
             raise newException(
-                SystemError, "error while parsing $1; malformed line $2" % [file, line] )
+                Exception, "error while parsing $1; malformed line $2" % [file, line] )
 
         # We're parsing the header, skip it
         if socketType == "Type": continue

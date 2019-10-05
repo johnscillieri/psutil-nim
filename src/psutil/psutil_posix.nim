@@ -1,11 +1,7 @@
-import posix
-import strutils
-import tables
-
+import posix, strutils, tables
 import common
 
 
-################################################################################
 const IFHWADDRLEN* = 6
 const IF_NAMESIZE* = 16
 const IFNAMSIZ* = IF_NAMESIZE
@@ -73,7 +69,7 @@ proc ioctl*(f: FileHandle, device: uint, data: pointer): int {.header: "<sys/ioc
 proc getifaddrs( ifap: var ptr ifaddrs ): int {.header: "<ifaddrs.h>".}
 proc freeifaddrs( ifap: ptr ifaddrs ): void {.header: "<ifaddrs.h>".}
 
-proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string
+proc psutil_convert_ipaddr(address: ptr SockAddr, family: posix.TSa_Family): string
 
 
 proc pid_exists*( pid: int ): bool =
@@ -86,7 +82,7 @@ proc pid_exists*( pid: int ): bool =
         # a process with id 0.
         return true
 
-    let ret_code = kill( pid, 0 )
+    let ret_code = kill( pid.int32, 0 )
 
     if ret_code == 0: return true
 
@@ -130,12 +126,12 @@ proc net_if_addrs*(): Table[string, seq[Address]] =
         let address = psutil_convert_ipaddr( current.ifa_addr, family )
         let netmask = psutil_convert_ipaddr( current.ifa_netmask, family )
         let bc_or_ptp = psutil_convert_ipaddr( current.ifu_broadaddr, family )
-        let broadcast = if (current.ifa_flags and IFF_BROADCAST) != 0: bc_or_ptp else: nil
+        let broadcast = if (current.ifa_flags and IFF_BROADCAST) != 0: bc_or_ptp else: ""
         # ifu_broadcast and ifu_ptp are a union in C, but we don't really care what C calls it
-        let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: nil
+        let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: ""
 
         if not( name in result ): result[name] = newSeq[Address]()
-        result[name].add( Address( family: family,
+        result[name].add( Address( family: family.uint16, # psutil_posix.nim(138, 42) Error: type mismatch: got <int32> but expected 'TSa_Family = uint16'
                                    address: address,
                                    netmask: netmask,
                                    broadcast: broadcast,
@@ -146,16 +142,16 @@ proc net_if_addrs*(): Table[string, seq[Address]] =
     freeifaddrs( interfaces )
 
 
-proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
+proc psutil_convert_ipaddr(address: ptr SockAddr, family: posix.TSa_Family): string =
     result = newString(NI_MAXHOST)
     var addrlen: Socklen
     var resultLen: Socklen = NI_MAXHOST.uint32
 
     if address == nil:
-        return nil
+        return ""
 
-    if family == AF_INET or family == AF_INET6:
-        if family == AF_INET:
+    if family.int == AF_INET or family.int == AF_INET6:
+        if family.int == AF_INET:
             addrlen = sizeof(SockAddr_in).uint32
         else:
             addrlen = sizeof(SockAddr_in6).uint32
@@ -165,12 +161,12 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
             # // XXX we get here on FreeBSD when processing 'lo' / AF_INET6
             # // broadcast. Not sure what to do other than returning None.
             # // ifconfig does not show anything BTW.
-            return nil
+            return ""
 
         else:
             return result.strip(chars=Whitespace + {'\x00'})
 
-    elif defined(linux) and family == AF_PACKET:
+    elif defined(linux) and family.int == AF_PACKET:
         var hw_address = cast[ptr sockaddr_ll](address)
         # TODO - this is going to break on non-Ethernet addresses (e.g. mac firewire - 8 bytes)
         # psutil actually handles this, i just wanted to test that it was working
@@ -182,7 +178,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
                                            hw_address.sll_addr[5].int.toHex(2) ).tolowerAscii()
 
 
-    elif ( defined(freebsd) or defined(openbsd) or defined(darwin) or defined(netbsd) ) and family == AF_PACKET:
+    elif ( defined(freebsd) or defined(openbsd) or defined(darwin) or defined(netbsd) ) and family.int == AF_PACKET:
         # struct sockaddr_dl *dladdr = (struct sockaddr_dl *)addr;
         # len = dladdr->sdl_alen;
         # data = LLADDR(dladdr);
@@ -190,7 +186,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: int): string =
 
     else:
         # unknown family
-        return nil
+        return ""
 
 
 proc disk_usage*(path: string): DiskUsage =
@@ -224,7 +220,7 @@ proc disk_usage*(path: string): DiskUsage =
     # NB: the percentage is -5% than what shown by df due to
     # reserved blocks that we are currently not considering:
     # https://github.com/giampaolo/psutil/issues/829#issuecomment-223750462
-    return DiskUsage( total:total, used:used, free:avail_to_user, percent:usage_percent_user)
+    return DiskUsage(total: total.int, used: used.int, free: avail_to_user.int, percent: usage_percent_user.float)
 
 
 proc ioctlsocket*( iface_name: string, ioctl: uint, ifr: var ifreq ): bool =
@@ -260,4 +256,3 @@ proc net_if_flags*( name: string ): bool =
         result = (ifr.ifr_ifru.ifru_flags and IFF_UP.cshort) != 0
     else:
         result = false
-
