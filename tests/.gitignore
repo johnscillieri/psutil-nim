@@ -1,3 +1,4 @@
 quick_test
 test_posix
 test_linux
+*.exe
