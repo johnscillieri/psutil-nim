@@ -15,15 +15,19 @@ type User* = object
 
 type CPUTimes* = object of RootObj
     user*: float
-    nice*: float
     system*: float
     idle*: float
-    iowait*: float
-    irq*: float
-    softirq*: float
-    steal*: float
-    guest*: float
-    guest_nice*: float
+    when defined(windows):
+        interrupt*: float
+        dpc*: float
+    when defined(posix):
+        nice*: float
+        iowait*: float
+        irq*: float
+        softirq*: float
+        steal*: float
+        guest*: float
+        guest_nice*: float
 
 type DiskUsage* = object of RootObj
     total*: int

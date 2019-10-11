@@ -18,6 +18,9 @@ when defined(posix):
 when defined(linux):
   import psutil/psutil_linux as platform
 
+when defined(windows):
+  import psutil/psutil_windows as platform
+
 
 ################################################################################
 var g_last_cpu_times: CPUTimes
@@ -61,12 +64,18 @@ proc cpu_count*(logical=true): int =
 
 
 proc calculate(t1, t2: CPUTimes): float =
-    let t1_all = t1.user + t1.nice + t1.system + t1.idle + t1.iowait +
-                 t1.irq + t1.softirq + t1.steal + t1.guest + t1.guest_nice
+    when defined(windows):
+        let t1_all = t1.user + t1.system + t1.idle + t1.interrupt + t1.dpc
+    else:
+        let t1_all = t1.user + t1.nice + t1.system + t1.idle + t1.iowait +
+                    t1.irq + t1.softirq + t1.steal + t1.guest + t1.guest_nice
     let t1_busy = t1_all - t1.idle
 
-    let t2_all = t2.user + t2.nice + t2.system + t2.idle + t2.iowait +
-                 t2.irq + t2.softirq + t2.steal + t2.guest + t2.guest_nice
+    when defined(windows):
+        let t2_all = t2.user + t2.system + t2.idle + t2.interrupt + t2.dpc
+    else:
+        let t2_all = t2.user + t2.nice + t2.system + t2.idle + t2.iowait +
+                    t2.irq + t2.softirq + t2.steal + t2.guest + t2.guest_nice
     let t2_busy = t2_all - t2.idle
 
     # this usually indicates a float precision issue

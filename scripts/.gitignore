@@ -2,3 +2,4 @@ disk_usage
 free
 meminfo
 ifconfig
+*.exe
