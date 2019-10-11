@@ -1,5 +1,7 @@
 {.deadCodeElim: on.}
 
+import math
+import sequtils
 import strutils
 import tables
 
@@ -211,43 +213,6 @@ proc uptime*(): int =
     int(GetTickCount64().float / 1000.float)
 
 
-proc cpu_times*(): CPUTimes = 
-    discard
-    # *
-    # * Retrieves system CPU timing information as a (user, system, idle)
-    # * tuple. On a multiprocessor system, the values returned are the
-    # * sum of the designated times across all processors.
-    # */
-    # static PyObject *
-    # psutil_cpu_times(PyObject *self, PyObject *args) {
-    #     double idle, kernel, user, system;
-    #     FILETIME idle_time, kernel_time, user_time;
-
-    #     if (!GetSystemTimes(&idle_time, &kernel_time, &user_time))
-    #         return PyErr_SetFromWindowsErr(0);
-
-    #     idle = (double)((HI_T * idle_time.dwHighDateTime) + \
-    #                 (LO_T * idle_time.dwLowDateTime));
-    #     user = (double)((HI_T * user_time.dwHighDateTime) + \
-    #                 (LO_T * user_time.dwLowDateTime));
-    #     kernel = (double)((HI_T * kernel_time.dwHighDateTime) + \
-    #                     (LO_T * kernel_time.dwLowDateTime));
-
-    #     // Kernel time includes idle time.
-    #     // We return only busy kernel time subtracting idle time from
-    #     // kernel time.
-    #     system = (kernel - idle);
-    #     return Py_BuildValue("(ddd)", user, system, idle);
-    # }
-
-    # Internally, GetSystemTimes() is used, and it doesn't return
-    # interrupt and dpc times. cext.per_cpu_times() does, so we
-    # rely on it to get those only.
-    # percpu_summed = scputimes(*[sum(n) for n in zip(*cext.per_cpu_times())])
-    # return scputimes(user, system, idle,
-    #                  percpu_summed.interrupt, percpu_summed.dpc)
-
-
 proc per_cpu_times*(): seq[CPUTimes] = 
     ## Return system per-CPU times as a sequence of CPUTimes.
     
@@ -283,6 +248,34 @@ proc per_cpu_times*(): seq[CPUTimes] =
 
         result.add(CPUTimes(user:user, system:system, idle:idle, interrupt:interrupt, dpc:dpc))
 
+
+
+proc cpu_times*(): CPUTimes = 
+    ## Retrieves system CPU timing information . On a multiprocessor system, the values returned are the
+    ## sum of the designated times across all processors.
+
+    var idle_time: FILETIME
+    var kernel_time: FILETIME
+    var user_time: FILETIME
+    
+    if GetSystemTimes(&idle_time, &kernel_time, &user_time).bool == false:
+        raiseError()
+
+    let idle = (HI_T * idle_time.dwHighDateTime.float) + (LO_T * idle_time.dwLowDateTime.float)
+    let user = (HI_T * user_time.dwHighDateTime.float) + (LO_T * user_time.dwLowDateTime.float)
+    let kernel = (HI_T * kernel_time.dwHighDateTime.float) + (LO_T * kernel_time.dwLowDateTime.float)
+
+    # Kernel time includes idle time.
+    # We return only busy kernel time subtracting idle time from kernel time.
+    let system = kernel - idle;
+    
+    # Internally, GetSystemTimes() is used, and it doesn't return interrupt and dpc times. 
+    # per_cpu_times() does, so we rely on it to get those only.
+    let per_times = per_cpu_times()
+    let interrupt_sum = sum(per_times.mapIt(it.interrupt))
+    let dpc_sum = sum(per_times.mapIt(it.dpc))
+    return CPUTimes(user:user, system:system, idle:idle, interrupt:interrupt_sum, dpc:dpc_sum)
+    
 
 ## ToDo - These are all stubbed out so things compile. 
 ## It also shows what needs to be done for feature parity with Linux
