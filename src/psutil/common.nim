@@ -11,6 +11,7 @@ type Address* = object of RootObj
 type User* = object
     name*: string
     terminal*: string
+    host*: string
     started*: float
 
 type CPUTimes* = object of RootObj

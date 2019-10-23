@@ -2,10 +2,11 @@
 
 import math
 import sequtils
+import strformat
 import strutils
 import tables
 
-import winim
+import winim except `&`
 
 import common
 
@@ -66,7 +67,7 @@ proc pids*(): seq[int] =
 
         if EnumProcesses( addr procArray[0], 
                           DWORD( procArrayLen * sizeof(DWORD) ), 
-                          &enumReturnSz ) == 0:
+                          addr enumReturnSz ) == 0:
             raiseError()
             return result
 
@@ -84,7 +85,7 @@ proc disk_partitions*( all=false ): seq[DiskPartition] =
     discard SetErrorMode( SEM_FAILCRITICALERRORS )
     
     var drive_strings = newWString( 256 )
-    let returned_len = GetLogicalDriveStringsW( 256, &drive_strings )
+    let returned_len = GetLogicalDriveStringsW( 256, drive_strings )
     if returned_len == 0:
         raiseError()
         return
@@ -113,7 +114,7 @@ proc disk_partitions*( all=false ): seq[DiskPartition] =
                                              DWORD( drive_letter.len ),
                                              NULL,
                                              NULL,
-                                             &pflags,
+                                             addr pflags,
                                              fs_type,
                                              DWORD( 256 ) )
         var opts = ""
@@ -144,7 +145,7 @@ proc disk_usage*( path: string ): DiskUsage =
     ## Return disk usage associated with path.
     var total, free: ULARGE_INTEGER
     
-    let ret_code = GetDiskFreeSpaceExW( path, nil, &total, &free )
+    let ret_code = GetDiskFreeSpaceExW( path, nil, addr total, addr free )
     if ret_code != 1: raiseError()
 
     let used = total.QuadPart - free.QuadPart
@@ -158,7 +159,7 @@ proc virtual_memory*(): VirtualMemory =
     var memInfo: MEMORYSTATUSEX
     memInfo.dwLength = sizeof(MEMORYSTATUSEX).DWORD
 
-    if GlobalMemoryStatusEx( &memInfo ) == 0:
+    if GlobalMemoryStatusEx( addr memInfo ) == 0:
         raiseError()
 
     let used = int(memInfo.ullTotalPhys - memInfo.ullAvailPhys)
@@ -175,7 +176,7 @@ proc swap_memory*(): SwapMemory =
     var memInfo: MEMORYSTATUSEX
     memInfo.dwLength = sizeof(MEMORYSTATUSEX).DWORD
 
-    if GlobalMemoryStatusEx( &memInfo ) == 0:
+    if GlobalMemoryStatusEx( addr memInfo ) == 0:
         raiseError()
 
     let total = memInfo.ullTotalPageFile.int
@@ -185,11 +186,7 @@ proc swap_memory*(): SwapMemory =
     return SwapMemory(total:total, used:used, free:free, percent:percent, sin:0, sout:0)
 
 
-proc boot_time*(): float = 
-    ## Return the system boot time expressed in seconds since the epoch
-    var fileTime : FILETIME
-    GetSystemTimeAsFileTime(&fileTime);
-
+proc toUnixTime(ft: FILETIME): float = 
     # HUGE thanks to:
     # http://johnstewien.spaces.live.com/blog/cns!E6885DB5CEBABBC8!831.entry
     # This function converts the FILETIME structure to the 32 bit
@@ -200,9 +197,16 @@ proc boot_time*(): float =
     # subtracting the number of 100-nanosecond period betwee 01-01-1970
     # and 01-01-1601, from time_t then divide by 1e+7 to get to the same
     # base granularity.
-    let ll = (int64(fileTime.dwHighDateTime) shl 32) + int64(fileTime.dwLowDateTime)
-    let pt = int(ll - 116444736000000000) / 10000000
-    
+    let ll = (int64(ft.dwHighDateTime) shl 32) + int64(ft.dwLowDateTime)
+    result = int(ll - 116444736000000000) / 10000000
+
+
+proc boot_time*(): float = 
+    ## Return the system boot time expressed in seconds since the epoch
+    var fileTime : FILETIME
+    GetSystemTimeAsFileTime(addr fileTime)
+
+    let pt = toUnixTime(fileTime)
     let uptime = int(GetTickCount64()) / 1000
     
     return pt - uptime
@@ -257,7 +261,7 @@ proc cpu_times*(): CPUTimes =
     var kernel_time: FILETIME
     var user_time: FILETIME
     
-    if GetSystemTimes(&idle_time, &kernel_time, &user_time).bool == false:
+    if GetSystemTimes(addr idle_time, addr kernel_time, addr user_time).bool == false:
         raiseError()
 
     let idle = (HI_T * idle_time.dwHighDateTime.float) + (LO_T * idle_time.dwLowDateTime.float)
@@ -266,7 +270,7 @@ proc cpu_times*(): CPUTimes =
 
     # Kernel time includes idle time.
     # We return only busy kernel time subtracting idle time from kernel time.
-    let system = kernel - idle;
+    let system = kernel - idle
     
     # Internally, GetSystemTimes() is used, and it doesn't return interrupt and dpc times. 
     # per_cpu_times() does, so we rely on it to get those only.
@@ -302,10 +306,175 @@ proc cpu_count_physical*(): int =
             result += 1
         
         # When offset == length, we've reached the last processor info struct in the buffer.
-        offset += currentPtr.Size;
-        prevProcessorInfoSize = currentPtr.Size;
+        offset += currentPtr.Size
+        prevProcessorInfoSize = currentPtr.Size
     
-    dealloc(buffer);
+    dealloc(buffer)
+
+
+type WTS_CONNECTSTATE_CLASS {.pure.} = enum 
+    WTSActive,
+    WTSConnected,
+    WTSConnectQuery,
+    WTSShadow,
+    WTSDisconnected,
+    WTSIdle,
+    WTSListen,
+    WTSReset,
+    WTSDown,
+    WTSInit
+
+
+type WTS_SESSION_INFO = object
+    sessionId: DWORD
+    pWinStationName: LPWSTR 
+    state: WTS_CONNECTSTATE_CLASS 
+
+
+type PWTS_SESSION_INFO = ptr WTS_SESSION_INFO
+
+
+type WTS_CLIENT_ADDRESS = object
+    addressFamily: DWORD
+    address: array[20, BYTE]
+
+
+type PWTS_CLIENT_ADDRESS = ptr WTS_CLIENT_ADDRESS
+
+
+const WTS_CURRENT_SERVER_HANDLE: HANDLE = 0 
+
+
+type WTS_INFO_CLASS {.pure.} = enum
+    WTSInitialProgram       = 0,
+    WTSApplicationName      = 1,
+    WTSWorkingDirectory     = 2,
+    WTSOEMId                = 3,
+    WTSSessionId            = 4,
+    WTSUserName             = 5,
+    WTSWinStationName       = 6,
+    WTSDomainName           = 7,
+    WTSConnectState         = 8,
+    WTSClientBuildNumber    = 9,
+    WTSClientName           = 10,
+    WTSClientDirectory      = 11,
+    WTSClientProductId      = 12,
+    WTSClientHardwareId     = 13,
+    WTSClientAddress        = 14,
+    WTSClientDisplay        = 15,
+    WTSClientProtocolType   = 16,
+    WTSIdleTime             = 17,
+    WTSLogonTime            = 18,
+    WTSIncomingBytes        = 19,
+    WTSOutgoingBytes        = 20,
+    WTSIncomingFrames       = 21,
+    WTSOutgoingFrames       = 22,
+    WTSClientInfo           = 23,
+    WTSSessionInfo          = 24
+
+
+type WINSTATION_INFO_CLASS = enum  
+    WinStationInformation = 8
+
+
+type WINSTATION_INFO = object
+    Reserved1: array[72, BYTE]
+    SessionId: ULONG 
+    Reserved2: array[4, BYTE]
+    ConnectTime: FILETIME
+    DisconnectTime: FILETIME 
+    LastInputTime: FILETIME 
+    LoginTime: FILETIME 
+    Reserved3: array[1096, BYTE]
+    CurrentTime: FILETIME 
+
+
+proc WTSEnumerateSessionsW(
+    hServer: HANDLE, 
+    reserved: DWORD, 
+    version: DWORD, 
+    ppSessionInfo: ptr PWTS_SESSION_INFO, 
+    pCount: PDWORD): WINBOOL {.winapi, stdcall, dynlib: "wtsapi32", importc.}
+
+
+proc WTSQuerySessionInformationW(
+    hServer: HANDLE, 
+    sessionId: DWORD,
+    wtsInfoClass: WTS_INFO_CLASS,
+    ppBuffer: ptr LPWSTR,
+    pBytesReturned: ptr DWORD): WINBOOL {.winapi, stdcall, dynlib: "wtsapi32", importc.}
+
+
+proc WTSFreeMemory(pMemory: PVOID) {.winapi, stdcall, dynlib: "wtsapi32", importc.}
+
+
+proc WinStationQueryInformation(
+    serverHandle: HANDLE,
+    sessionId: ULONG,
+    winStationInformationClass: WINSTATION_INFO_CLASS,
+    pWinStationInformation: ptr WINSTATION_INFO,
+    winStationInformationLength: ULONG,
+    pReturnLength: PULONG): BOOLEAN {.winapi, stdcall, dynlib: "winsta", importc: "WinStationQueryInformationW".}
+
+
+proc getUserForSession(server: HANDLE, sessionId: DWORD): string = 
+    var buffer_user: PWCHAR = NULL
+    var bytes: DWORD = 0
+    if WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSUserName, addr buffer_user, addr bytes) == 0:
+        raiseError()
+    
+    if bytes <= 2:
+        return ""
+
+    result = $buffer_user
+
+    WTSFreeMemory(buffer_user)
+
+
+proc getAddressForSession(server: HANDLE, sessionId: DWORD): string = 
+    var bytes: DWORD = 0
+    var buffer_addr: LPWSTR = NULL
+    if WTSQuerySessionInformationW(server, sessionId, WTS_INFO_CLASS.WTSClientAddress, addr buffer_addr, addr bytes) == 0:
+        raiseError()
+
+    let address = cast[PWTS_CLIENT_ADDRESS](buffer_addr).address
+    let addressFamily = cast[PWTS_CLIENT_ADDRESS](buffer_addr).addressFamily
+
+    if addressFamily == 0: 
+        result = &"{address[0]}.{address[1]}.{address[2]}.{address[3]}"
+
+    WTSFreeMemory(buffer_addr)
+
+
+proc getLoginTimeForSession(server: HANDLE, sessionId: DWORD): float = 
+    var station_info: WINSTATION_INFO
+    var returnLen: ULONG
+    if WinStationQueryInformation(server, sessionId, WinStationInformation, addr station_info, sizeof(station_info).ULONG, addr returnLen) == 0:
+        return -1
+
+    result = toUnixTime(station_info.ConnectTime)
+    
+
+proc users*(): seq[User] = 
+    var count: DWORD = 0
+    var sessions: PWTS_SESSION_INFO 
+    if WTSEnumerateSessionsW(WTS_CURRENT_SERVER_HANDLE, 0, 1, addr sessions, addr count) == 0:
+        raiseError()
+
+    for i in 0 ..< count:
+        let currentSession =  cast[PWTS_SESSION_INFO](cast[int](sessions) + (sizeof(WTS_SESSION_INFO)*i))
+        let sessionId = currentSession.sessionId
+
+        let user = getUserForSession(WTS_CURRENT_SERVER_HANDLE, sessionId)
+        if user == "": continue
+
+        let address = getAddressForSession(WTS_CURRENT_SERVER_HANDLE, sessionId)
+        let login_time = getLoginTimeForSession(WTS_CURRENT_SERVER_HANDLE, sessionId)
+        
+        result.add(User(name:user, host:address, started:login_time))
+
+    WTSFreeMemory(sessions)
+
 
 
 ## ToDo - These are all stubbed out so things compile. 
@@ -331,5 +500,3 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
 proc pid_exists*( pid: int ): bool = 
     raise newException( Exception, "Function is unimplemented!")
 
-proc users*(): seq[User] = 
-    raise newException( Exception, "Function is unimplemented!")
