@@ -2,7 +2,18 @@
 
 > Port of Python [psutil](https://github.com/giampaolo/psutil) to Nim.
 
+![](https://img.shields.io/github/languages/top/juancarlospaco/psutil-nim?style=for-the-badge)
+![](https://img.shields.io/github/languages/count/juancarlospaco/psutil-nim?logoColor=green&style=for-the-badge)
+![](https://img.shields.io/github/stars/juancarlospaco/psutil-nim?style=for-the-badge "Star psutil-nim on GitHub!")
+![](https://img.shields.io/maintenance/yes/2019?style=for-the-badge "2019")
+![](https://img.shields.io/github/languages/code-size/juancarlospaco/psutil-nim?style=for-the-badge)
+![](https://img.shields.io/github/issues-raw/juancarlospaco/psutil-nim?style=for-the-badge "Bugs")
+![](https://img.shields.io/github/issues-pr-raw/juancarlospaco/psutil-nim?style=for-the-badge "PRs")
+![](https://img.shields.io/github/commit-activity/y/juancarlospaco/psutil-nim?style=for-the-badge)
+![](https://img.shields.io/github/last-commit/juancarlospaco/psutil-nim?style=for-the-badge "Commits")
+
 **Pull requests with bug fixes and support for other platforms are welcome!**
+
 
 ## Table of Contents
 
@@ -70,6 +81,11 @@ when not detectOs(CentOS):
   echo net_if_stats()
   echo net_connections()
 ```
+
+
+# Stars
+
+![Star psutil-nim on GitHub](https://starchart.cc/juancarlospaco/psutil-nim.svg "Star psutil-nim on GitHub!")
 
 
 ## Contribute
