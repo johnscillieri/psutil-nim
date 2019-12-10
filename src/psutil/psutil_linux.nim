@@ -155,7 +155,7 @@ proc uptime*(): int =
 proc pids*(): seq[int] =
     ## Returns a list of PIDs currently running on the system.
     let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
-    return mapIt( filterIt( all_files, isdigit( it.path ) ), parseInt( it.path ) )
+    return mapIt( filterIt( all_files, allIt( it.path, isdigit(it) ) ), parseInt( it.path ) )
 
 
 proc pid_exists*( pid: int ): bool =

@@ -131,7 +131,7 @@ proc net_if_addrs*(): Table[string, seq[Address]] =
         let ptp = if (current.ifa_flags and IFF_POINTOPOINT) != 0: bc_or_ptp else: ""
 
         if not( name in result ): result[name] = newSeq[Address]()
-        result[name].add( Address( family: family.uint16, # psutil_posix.nim(138, 42) Error: type mismatch: got <int32> but expected 'TSa_Family = uint16'
+        result[name].add( Address( family: family, # psutil_posix.nim(138, 42) Error: type mismatch: got <int32> but expected 'TSa_Family = uint16'
                                    address: address,
                                    netmask: netmask,
                                    broadcast: broadcast,

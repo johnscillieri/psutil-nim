@@ -88,7 +88,8 @@ type DiskIO* = object of RootObj
     write_bytes*: int
     read_time*: int
     write_time*: int
-    when defined(linux):
+    when defined(linux) or defined(macosx):
+        reads_merged*: int
         read_merged_count*: int
         write_merged_count*: int
         busy_time*: int
