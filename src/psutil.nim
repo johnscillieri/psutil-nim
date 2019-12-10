@@ -22,7 +22,7 @@ when defined(windows):
   import psutil/psutil_windows as platform
 
 when defined(macosx):
-  import psutil/psutil_linux as platform
+  import psutil/psutil_macosx as platform
 ################################################################################
 var g_last_cpu_times: CPUTimes
 var g_last_per_cpu_times: seq[CPUTimes]
