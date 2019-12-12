@@ -3,7 +3,7 @@ import times except Time
 import common
 import strutils
 # https://reviews.freebsd.org/rS317061
-    
+
 const
     CTL_KERN = 1
     KERN_SUCCESS = 0           # mach/kern_return.h.
@@ -39,7 +39,7 @@ type host_cpu_load_info_data_t = host_cpu_load_info
 type Timeval = object
     tv_sec*: Time
     tv_usec*: int32
-type host_info_t = int32
+type host_info_t = ptr cint
 proc sysctl(x: ptr array[0..3, cint], y: cint, z: pointer,
             a: var csize, b: pointer, c: int): cint {.
             importc: "sysctl", nodecl.}
@@ -52,10 +52,11 @@ proc mach_task_self(): cint{.importc: "mach_task_self",
         header: "<mach/thread_act.h>", nodecl.}
 proc mach_error_string(): string{.importc: "mach_error_string",
         header: "<mach/thread_act.h>", nodecl, varargs.}
-proc host_statistics(a:cint;b:cint;c:ptr host_info_t;d:ptr cint): cint{.importc: "host_statistics",
-        header: "<mach/mach_host.h>", nodecl, varargs.}
+proc host_statistics(a: cint; b: cint; c: host_info_t; d: ptr cint): cint{.
+        importc: "host_statistics", header: "<mach/mach_host.h>", nodecl, varargs.}
 
-proc host_statistics64(a:cint;b:cint;c:ptr host_info_t;d:ptr cint): cint{.importc: "host_statistics64",
+proc host_statistics64(a: cint; b: cint; c: seq[cint]; d: ptr cint): cint{.
+        importc: "host_statistics64",
     header: "<mach/mach_host.h>", nodecl, varargs.}
 
 proc boot_time*(): int =
@@ -78,47 +79,50 @@ proc uptime*(): int =
     times.epochTime().int - boot_time()
 
 var HOST_CPU_LOAD_INFO_COUNT {.importc: "HOST_CPU_LOAD_INFO_COUNT",
-    header: "<mach/mach_host.h>",nodecl.}: cint
+    header: "<mach/mach_host.h>", nodecl.}: cint
 
-type Vmmeter {.importc: "vmmeter",header: "<sys/vmmeter.h>",nodecl.} = object
-    v_swtch:int
-    v_intr:int
-    v_soft:int
-    v_syscall:int
+type Vmmeter = object
+    v_swtch: int
+    v_intr: int
+    v_soft: int
+    v_syscall: int
 
 proc cpu_times*(): CPUTimes =
 
     var count = HOST_CPU_LOAD_INFO_COUNT
     let host_port = mach_host_self()
-    var r_load:host_cpu_load_info_data_t
-    var a = cast[host_info_t](r_load)
-    let error = host_statistics64(host_port, HOST_CPU_LOAD_INFO,a.addr,count.addr);
+    var r_load: host_cpu_load_info_data_t
+    let error = host_statistics(cint(host_port), HOST_CPU_LOAD_INFO, cast[
+            host_info_t](r_load.addr), count.addr)
 
     if error != KERN_SUCCESS:
         raise newException(OSError, "host_statistics(HOST_CPU_LOAD_INFO) syscall failed: $1" %
-                mach_error_string(error));
-
+                mach_error_string(error))
     mach_port_deallocate(mach_task_self(), host_port)
+
     result.user = r_load.cpu_ticks[CPU_STATE_USER].cdouble / CLK_TCK
     result.nice = r_load.cpu_ticks[CPU_STATE_NICE].cdouble / CLK_TCK
     result.system = r_load.cpu_ticks[CPU_STATE_SYSTEM].cdouble / CLK_TCK
     result.idle = r_load.cpu_ticks[CPU_STATE_IDLE].cdouble / CLK_TCK
 
-proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts, syscalls: int] =
-    var vmstat:Vmmeter
-   
-    var count:cint = sizeof(vmstat).cint div sizeof(cint).cint;
+proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts,
+        syscalls: int] =
+    var vmstat = Vmmeter()
+
+    var count: cint = sizeof(vmstat).cint div sizeof(cint).cint;
     let mport = mach_host_self()
-    var a = cast[host_info_t](vmstat)
-    let ret = host_statistics(mport, HOST_VM_INFO.cint, a.addr, count.addr);
+    let ret = host_statistics(mport, HOST_VM_INFO.cint, cast[host_info_t](
+            vmstat.addr), count.addr)
+    echo ret
     if ret != KERN_SUCCESS:
         raise newException(OSError, "host_statistics(HOST_VM_INFO) syscall failed: $1" %
-        mach_error_string(ret));
-    mach_port_deallocate(mach_task_self(), mport);
-    echo 11
+        mach_error_string(ret))
+
+    mach_port_deallocate(mach_task_self(), mport)
+
     return (vmstat.v_swtch, vmstat.v_intr, vmstat.v_soft, vmstat.v_syscall)
 
 when isMainModule:
     echo boot_time()
     echo uptime()
-    echo cpu_stats()
+    echo cpu_times()
