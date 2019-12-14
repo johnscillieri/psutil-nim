@@ -1,14 +1,15 @@
-import posix
+import posix,segfaults
 import times except Time
 import common
 import strutils
+include "system/ansi_c"
 # https://reviews.freebsd.org/rS317061
 
 const
-    CTL_KERN = 1
+    CTL_KERN = 1.cint      #
     KERN_SUCCESS = 0           # mach/kern_return.h.
-    CTL_VM = 2
-    KERN_BOOTTIME = 21
+    CTL_VM = 2.cint
+    KERN_BOOTTIME = 21.cint
     # host_statistics()
     HOST_LOAD_INFO = 1.cint    # System loading stats
     HOST_VM_INFO = 2.cint      # Virtual memory stats
@@ -51,8 +52,8 @@ type Vmmeter {.importc: "struct vmmeter", header: "<sys/vmmeter.h>",
     v_soft: cint
     v_syscall: cint
 
-proc sysctl(x: ptr array[0..3, cint], y: cint, z: pointer,
-            a: var csize, b: pointer, c: int): cint {.
+proc sysctl(x: pointer, y: cint, z: pointer,
+            a: var csize_t, b: pointer, c: int): cint {.
             importc: "sysctl", nodecl.}
 
 proc mach_host_self(): mach_port_t{.importc: "mach_host_self",
@@ -64,9 +65,7 @@ proc mach_task_self(): cint{.importc: "mach_task_self",
 proc mach_error_string(): string{.importc: "mach_error_string",
         header: "<mach/thread_act.h>", nodecl, varargs.}
 proc host_statistics(a: mach_port_t; b: cint; c: host_info_t;
-        d: ptr mach_msg_type_number_t): cint{.
-
-importc: "host_statistics", header: "<mach/mach_host.h>", nodecl, varargs.}
+        d: ptr mach_msg_type_number_t): cint{.importc: "host_statistics", header: "<mach/mach_host.h>", nodecl, varargs.}
 
 proc host_statistics64(a: mach_port_t; b: cint; c: host_info_t;
         d: ptr mach_msg_type_number_t): cint{.importc: "host_statistics64",
@@ -75,14 +74,14 @@ proc host_statistics64(a: mach_port_t; b: cint; c: host_info_t;
 proc boot_time*(): int =
     ## Return the system boot time expressed in seconds since the epoch, Integer type.
     var
-        mib: array[0..3, cint]
+        mib: array[0..3,cint]
         boot_time: Time
-        len: csize
+        len: csize_t
         r: Timeval
     mib[0] = CTL_KERN
     mib[1] = KERN_BOOTTIME
-    len = sizeof(r)
-    if sysctl(addr(mib), 2, addr(r), len, nil, 0) == -1:
+    len = sizeof(r).csize_t
+    if sysctl(mib.addr, 2, addr(r), len, nil, 0) == -1:
         raise newException(OSError, "")
     boot_time = (Time)r.tv_sec
     return boot_time.int
@@ -132,21 +131,23 @@ proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts,
     return (vmstat.v_swtch.int, vmstat.v_intr.int, vmstat.v_soft.int,
             vmstat.v_syscall.int)
 
-type StructProc {.importc: "struct proc", header: "<sys/types.h>".} = object
+type StructProc {.importc: "struct proc", header: "<sys/types.h>", pure, incompleteStruct,nodecl.} = object
     p_pid: cint
-var KERN_PROC, KERN_PROC_ALL {.importc: "KERN_PROC,KERN_PROC_ALL",
-        header: "<sys/types.h>".}: cint #StructProc
+var KERN_PROC {.importc: "KERN_PROC",
+        header: "<sys/types.h>", nodecl.}: cint
+var KERN_PROC_ALL {.importc: "KERN_PROC_ALL",
+        header: "<sys/types.h>", nodecl.}: cint
 type StructKinfoProc {.importc: "struct kinfo_proc",
-        header: "<sys/types.h>".} = object
+        header: "<sys/types.h>", pure, incompleteStruct,nodecl.} = object # https://opensource.apple.com/source/xnu/xnu-1456.1.26/bsd/sys/sysctl.h.auto.html
     kp_proc: StructProc
 
-proc get_proc_list(procList: ptr StructKinfoProc; procCount: ptr csize_t): int =
+proc get_proc_list(procList: ptr StructKinfoProc; procCount: ptr csize_t):int {.inline,nodecl.} =
     var
         size, size2: csize_t
-        err: int
+        err: cint
         lim = 8
-        ptrr: ptr RootObj
-    let mib3 = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
+        ptrr: pointer
+    var mib3 = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
 
     assert not isNil(procList)
     assert isNil(procList)
@@ -154,43 +155,44 @@ proc get_proc_list(procList: ptr StructKinfoProc; procCount: ptr csize_t): int =
 
     procCount[] = 0
 
-    while lim -- > 0:
+    while lim > 0:
         size = 0
-        if sysctl(mib3.unsafeAddr, 3, nil, size.addr, nil, 0) == -1:
+        if sysctl(mib3.addr, 3, nil, size, nil, 0) == -1:
             # PyErr_SetFromOSErrnoWithSyscall("sysctl(KERN_PROC_ALL)")
             return 1
-        size2 = size + (size >> 3) # add some
+        size2 = size + (size shr 3) # add some
         if (size2 > size):
-            ptrr = malloc(size2)
+            ptrr =  c_malloc(size2)
             if (ptrr == nil):
-                ptrr = malloc(size)
+                ptrr =  c_malloc(size)
             else:
                 size = size2
         else:
-            ptrr = malloc(size)
+            ptrr =  c_malloc(size)
         if (ptrr == nil):
             # PyErr_NoMemory()
             return 1;
-            if (sysctl(mib3.unsafeAddr, 3, ptrr, size.addr, nil, 0) == -1):
-                err = errno
-                free(ptrr)
+        if (sysctl(mib3.addr, 3, ptrr, size, nil, 0) == -1):
+            err = errno
+            c_free(ptrr)
             if (err != ENOMEM):
                 # PyErr_SetFromOSErrnoWithSyscall("sysctl(KERN_PROC_ALL)")
                 return 1
         else:
-            procList = cast[kinfo_proc](ptrr);
-            procCount = size / sizeof(kinfo_proc);
-            if (procCount <= 0):
+            procList[] = cast[StructKinfoProc](ptrr);
+            procCount[] = size div sizeof(StructKinfoProc).csize_t
+            if (procCount[] <= 0):
                 # PyErr_Format(PyExc_RuntimeError, "no PIDs found")
                 return 1
 
             return 0 # success
     # PyErr_Format(PyExc_RuntimeError, "couldn't collect PIDs list")
+        lim -= 1
     return 1
 
 proc pids*(): seq[int] =
     var
-        proclist: ptr StructKinfoProc
+        proclist:ptr  StructKinfoProc
         orig_address: ptr StructKinfoProc
         num_processes: csize_t
         idx: csize_t
@@ -214,10 +216,10 @@ proc pids*(): seq[int] =
         # if (PyList_Append(py_retlist, py_pid))
             # discard# goto error;
         # Py_CLEAR(py_pid);
-        proclist ++
+        # proclist.inc 
         idx.inc
 
-    free(orig_address)
+    c_free(orig_address)
     return py_retlist
 
 when isMainModule:
@@ -225,3 +227,4 @@ when isMainModule:
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
+    echo pids()
