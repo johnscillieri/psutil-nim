@@ -59,11 +59,13 @@ type Vmmeter {.importc: "struct vmmeter", header: "<sys/vmmeter.h>",
 
 type VmStatistics {.importc: "struct vm_statistics",
         header: "<mach/vm_statistics.h>", pure, incompleteStruct,
-        nodecl.} = object
+        nodecl.} = object # https://opensource.apple.com/source/xnu/xnu-3789.51.2/osfmk/mach/vm_statistics.h.auto.html
     free_count: cint        # of pages free
     active_count: cint      # of pages active
     inactive_count: cint    # of pages inactive
     wire_count: cint        # of pages wired down
+    pageins: cint
+    pageouts: cint
                             #[
                             * NB: speculative pages are already accounted for in "free_count",
                             * so "speculative_count" is the number of "free" pages that are
@@ -79,7 +81,13 @@ type VmStatistics {.importc: "struct vm_statistics",
                             #Used by all architectures
 type vm_statistics_t = ptr VmStatistics
 type vm_statistics_data_t = VmStatistics
-
+type xsw_usage {.importc: "struct xsw_usage", header: "<sys/sysctl.h>",nodecl.} = object
+    xsu_total: uint64
+    xsu_avail: uint64
+    xsu_used: uint64
+    xsu_pagesize: uint32
+    xsu_encrypted: bool
+    
 proc sysctl(x: pointer, y: cint, z: pointer,
             a: var csize_t, b: pointer, c: int): cint {.
             importc: "sysctl", nodecl.}
@@ -335,6 +343,31 @@ proc virtual_memory*(): VirtualMemory =
         free: vm.free_count * PAGESIZE,
         # speculative: vm.speculative_count * PAGESIZE
         )
+    
+proc swap_memory*(): SwapMemory =
+    var
+        mib: array[0..2, cint]
+        len: csize_t
+        totals:xsw_usage
+        vm: vm_statistics_data_t
+    let PAGESIZE = sysconf( SC_PAGE_SIZE )
+    mib[0] = CTL_HW
+    mib[1] = HW_MEMSIZE
+    len = sizeof(totals).csize_t
+    if sysctl(mib.addr, 2, addr(totals), len, nil, 0) == -1:
+        discard
+        # PyErr_SetFromErrno(PyExc_OSError);
+    else:
+        discard
+        # PyErr_Format(
+        #         PyExc_RuntimeError, "sysctl(HW_MEMSIZE) syscall failed");
+        # return nil
+    let ret = sys_vminfo(vm.addr)
+    if not 1 == ret:
+        return 
+    let percent = usage_percent( totals.xsu_used, totals.xsu_total, 1 )
+    return SwapMemory( total:totals.xsu_total.int, used:totals.xsu_used.int, free:totals.xsu_avail.int,
+        percent:percent, sin:vm.pageins * PAGESIZE, sout:vm.pageouts * PAGESIZE )   
 
 when isMainModule:
     echo boot_time()
@@ -345,3 +378,4 @@ when isMainModule:
     echo cpu_count_logical()
     echo cpu_count_physical()
     echo virtual_memory()
+    echo swap_memory()
