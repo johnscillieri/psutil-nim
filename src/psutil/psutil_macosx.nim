@@ -31,6 +31,10 @@ var CPU_STATE_SYSTEM {.importc: "CPU_STATE_SYSTEM",
 var CPU_STATE_IDLE {.importc: "CPU_STATE_IDLE",
         header: "<mach/machine.h>".}: cint
 var CLK_TCK {.importc: "CLK_TCK", header: "<sys/time.h>".}: cdouble
+var CTL_HW  {.importc: "CTL_HW",header: "<sys/sysctl.h>".}: cint
+var HW_NCPU  {.importc: "HW_NCPU",header: "<sys/sysctl.h>".}: cint
+var HW_AVAILCPU  {.importc: "HW_AVAILCPU",header: "<sys/sysctl.h>".}: cint
+
 
 type host_cpu_load_info_data_t {.importc: "host_cpu_load_info_data_t",
         header: "<mach/host_info.h>".} = object
@@ -55,6 +59,8 @@ type Vmmeter {.importc: "struct vmmeter", header: "<sys/vmmeter.h>",
 proc sysctl(x: pointer, y: cint, z: pointer,
             a: var csize_t, b: pointer, c: int): cint {.
             importc: "sysctl", nodecl.}
+
+proc sysctlbyname( name:  cstring; oldp:ptr cint; oldlenp: ptr csize_t;newp: pointer; newlen:csize_t ):cint {.importc: "sysctl", nodecl.}
 
 proc mach_host_self(): mach_port_t{.importc: "mach_host_self",
         header: "<mach/mach_init.h>", nodecl.}
@@ -121,7 +127,6 @@ proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts,
     let mport = mach_host_self()
     let ret = host_statistics(mport, HOST_VM_INFO, cast[host_info_t](
             vmstat.unsafeAddr), count.unsafeAddr)
-    echo ret
     if ret != KERN_SUCCESS:
         raise newException(OSError, "host_statistics(HOST_VM_INFO) syscall failed: $1" %
         mach_error_string(ret))
@@ -222,9 +227,42 @@ proc pids*(): seq[int] =
     c_free(orig_address)
     return py_retlist
 
+
+proc cpu_count_logical*(): cint =
+    ## shared with BSD
+    var
+        mib: array[0..3,cint]
+        len: csize_t
+        r: cint
+    mib[0] = CTL_HW
+    mib[1] = HW_NCPU
+    len = sizeof(r).csize_t
+    if sysctl(mib.addr, 2, addr(r), len, nil, 0) == -1:
+        return -1
+    else:
+        return r
+
+
+proc cpu_count_physical*(): int =
+    ## just OSX
+    var
+        mib: array[0..3,cint]
+        len: csize_t
+        r: cint
+    mib[0] = CTL_HW
+    mib[1] = HW_AVAILCPU
+    len = sizeof(r).csize_t
+    if sysctl(mib.addr, 2, addr(r), len, nil, 0) == -1:
+        return -1
+    else:
+        return r
+
+
 when isMainModule:
     echo boot_time()
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
-    echo pids()
+    # echo pids()
+    echo cpu_count_logical()
+    echo cpu_count_physical()
