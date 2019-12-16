@@ -1,4 +1,4 @@
-import posix, segfaults
+import posix, segfaults, macros
 import times except Time
 import common
 import strutils
@@ -92,8 +92,14 @@ type xsw_usage {.importc: "struct xsw_usage", header: "<sys/sysctl.h>",
 type fsid_t = object
     val:array[2,cint]
 
-type statfs {.importc: "struct statfs", header: "<sys/syscall.h>",pure, incompleteStruct,nodecl.} = object
-    f_type: clong
+const MFSNAMELEN      = 15 # length of fs type name, not inc. nul */
+const MNAMELEN        = 90 # length of buffer for returned name */
+const MFSTYPENAMELEN  = 16 # length of fs type name including null */
+const MAXPATHLEN      = 1024
+
+type statfs {.importc: "struct statfs", header: "<sys/mount.h>",nodecl.}  = object # {.importc: "struct statfs", header: "<sys/syscall.h>",pure,nodecl.}
+
+    # https://linux.die.net/man/2/statfs
     f_bsize: clong
     f_blocks: clong
     f_bfree: clong
@@ -101,8 +107,22 @@ type statfs {.importc: "struct statfs", header: "<sys/syscall.h>",pure, incomple
     f_files: clong
     f_ffree: clong
     f_fsid: fsid_t
-    f_flags:uint64
+    f_frsize:clong
+    f_spare: array[5,clong]
     f_namelen: clong
+    # https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/statfs.2.html
+    f_flags:clong
+    f_otype: cshort
+    f_oflags: cshort
+    f_owner: uint
+    f_reserved1:cshort
+    f_reserved2:array[2,clong]
+    f_fstypename:array[MFSNAMELEN,char] # fs type name */
+    f_mntonname:array[MNAMELEN,char]    # directory on which mounted */
+    f_mntfromname:array[MNAMELEN,char]  # mounted file system */
+    f_reserved3:char              # reserved for future use */
+    f_reserved4:array[4,clong] # reserved for future use */
+    
  
 const MNT_SYNCHRONOUS = 0x00000002 # file system written synchronously
 const MNT_RDONLY      = 0x00000001 # read only filesystem
@@ -130,7 +150,7 @@ const MNT_UPDATE      = 0x00010000
 const MNT_RELOAD      = 0x00040000
 const MNT_FORCE       = 0x00080000
 
-const MNT_CMDFLAGS flags{ MNT_UPDATE MNT_RELOAD MNT_FORCE }
+const MNT_CMDFLAGS = (MNT_UPDATE or MNT_RELOAD  or MNT_FORCE)
 
 const MNT_WAIT = 1
 const MNT_NOWAIT = 2
@@ -422,12 +442,13 @@ proc swap_memory*(): SwapMemory =
         free: totals.xsu_avail.int,
         percent: percent, sin: vm.pageins * PAGESIZE, sout: vm.pageouts * PAGESIZE)
 
+
 proc disk_partitions*(all = false): seq[DiskPartition] =
     var
         num:cint
         i:int
         len: csize_t
-        flags: uint64
+        flags: clong
         opts: array[400, char]
         fs:ptr UncheckedArray[statfs]
     # get the number of mount points
@@ -439,99 +460,87 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
     #     goto error;
     
     echo num
-    len = csize_t( sizeof(fs[]).uint * num.uint )
-    let ptrr = c_malloc(len)
-    if (ptrr == nil) :
+    len = csize_t( sizeof(fs).uint * num.uint )
+    fs = cast[ptr UncheckedArray[statfs]](c_malloc(len))
+    if (fs == nil) :
         discard
         #     PyErr_SetFromErrno(PyExc_OSError);
         #     goto error;
     # Py_BEGIN_ALLOW_THREADS
     num = getfsstat(fs, len.clong, MNT_NOWAIT)
     # Py_END_ALLOW_THREADS    
+    echo num,"#",len
     if (num == -1) :
         discard
         # PyErr_SetFromErrno(PyExc_OSError);
         # goto error
-    var f:ptr UncheckedArray[statfs] 
+
+    var 
+        partition:DiskPartition
+        device: cstring
+        mountpoint: cstring
+        fstype: cstring
+        popts: cstring
     while i < num :
-        opts[0] = '0'
-        f  = cast[ptr UnCheckedArray[statfs]](fs)
-        flags = f[i].f_flags
+        # opts[0] = 0
+        flags = fs[i].f_flags
         # see sys/mount.h
         if (flags and MNT_RDONLY) != 0:
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), "ro", sizeof(opts).csize_t)
         else:
-            # strlcat(opts, "rw", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), "rw", sizeof(opts).csize_t)
         if (flags and MNT_SYNCHRONOUS) != 0:
-            # strlcat(opts, ",sync", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",sync", sizeof(opts).csize_t)
         if (flags and MNT_NOEXEC) != 0:
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), "noexec", sizeof(opts).csize_t)
-            # strlcat(opts, ",noexec", sizeof(opts));
         if (flags and MNT_NOSUID) != 0:
-            # strlcat(opts, ",nosuid", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",nosuid", sizeof(opts).csize_t)
         if (flags and MNT_UNION) != 0:
-            # strlcat(opts, ",union", sizeof(opts))
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",union", sizeof(opts).csize_t)
         if (flags and MNT_ASYNC) != 0:
-            # strlcat(opts, ",async", sizeof(
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",async", sizeof(opts).csize_t)
         if (flags and MNT_EXPORTED) != 0:
-            # strlcat(opts, ",exported", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",exported", sizeof(opts).csize_t)
         if (flags and MNT_QUARANTINE) != 0:
-            # strlcat(opts, ",quarantine", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",quarantine", sizeof(opts).csize_t)
         if (flags and MNT_LOCAL) != 0:
-            # strlcat(opts, ",local", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",local", sizeof(opts).csize_t)
         if (flags and MNT_QUOTA) != 0:
-            # strlcat(opts, ",quota", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",quota", sizeof(opts).csize_t)
         if (flags and MNT_ROOTFS) != 0:
-            # strlcat(opts, ",rootfs", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",rootfs", sizeof(opts).csize_t)
         if (flags and MNT_DOVOLFS) != 0:
-            # strlcat(opts, ",dovolfs", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",dovolfs", sizeof(opts).csize_t)
         if (flags and MNT_DONTBROWSE) != 0:
-            # strlcat(opts, ",dontbrowse", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",dontbrowse", sizeof(opts).csize_t)
         if (flags and MNT_IGNORE_OWNERSHIP) != 0:
-            # strlcat(opts, ",ignore-ownership", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",ignore-ownership", sizeof(opts).csize_t)
         if (flags and MNT_AUTOMOUNTED) != 0:
-            # strlcat(opts, ",automounted", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",automounted", sizeof(opts).csize_t)
         if (flags and MNT_JOURNALED) != 0:
-            # strlcat(opts, ",journaled", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",journaled", sizeof(opts).csize_t)
         if (flags and MNT_NOUSERXATTR) != 0:
-            # strlcat(opts, ",nouserxattr", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",nouserxattr", sizeof(opts).csize_t)
         if (flags and MNT_DEFWRITE) != 0:
-            # strlcat(opts, ",defwrite", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",defwrite", sizeof(opts).csize_t)
         if (flags and MNT_MULTILABEL) != 0:
-            # strlcat(opts, ",multilabel", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",multilabel", sizeof(opts).csize_t)
         if (flags and MNT_NOATIME) != 0:
-            # strlcat(opts, ",noatime", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",noatime", sizeof(opts).csize_t)
         if (flags and MNT_UPDATE) != 0:
-            # strlcat(opts, ",update", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",update", sizeof(opts).csize_t)
         if (flags and MNT_RELOAD) != 0:
-            # strlcat(opts, ",reload", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",reload", sizeof(opts).csize_t)
         if (flags and MNT_FORCE) != 0:
-            # strlcat(opts, ",force", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",force", sizeof(opts).csize_t)
         if (flags and MNT_CMDFLAGS) != 0:
-            # strlcat(opts, ",cmdflags", sizeof(opts));
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",cmdflags", sizeof(opts).csize_t)
+        device = cast[cstring](fs[i].f_mntfromname.addr)
+        mountpoint = cast[cstring](fs[i].f_mntonname.addr)
+        fstype = cast[cstring](fs[i].f_fstypename.addr)
+        popts = cast[cstring](opts.addr)
+        partition = DiskPartition( device: cast[string](device), mountpoint: cast[string](mountpoint), fstype:cast[string](fstype), opts:cast[string](popts) )
+        result.add( partition )    
         i.inc
 
 when isMainModule:
