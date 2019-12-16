@@ -1,9 +1,8 @@
-import posix, segfaults, macros
+import posix, segfaults
 import times except Time
 import common
 import strutils
 include "system/ansi_c"
-# https://reviews.freebsd.org/rS317061
 
 const
     CTL_KERN = 1.cint          #
@@ -97,7 +96,7 @@ const MNAMELEN        = 90 # length of buffer for returned name */
 const MFSTYPENAMELEN  = 16 # length of fs type name including null */
 const MAXPATHLEN      = 1024
 
-type statfs {.importc: "struct statfs", header: "<sys/mount.h>",nodecl.}  = object # {.importc: "struct statfs", header: "<sys/syscall.h>",pure,nodecl.}
+type statfs {.importc: "struct statfs", header: "<sys/mount.h>",pure, incompleteStruct,nodecl.}  = object # {.importc: "struct statfs", header: "<sys/syscall.h>",pure,nodecl.}
 
     # https://linux.die.net/man/2/statfs
     f_bsize: clong
@@ -156,7 +155,7 @@ const MNT_WAIT = 1
 const MNT_NOWAIT = 2
 
 proc strlcat(dst:ptr UncheckedArray[char];src: cstring ,size:csize_t ) : csize_t {.importc: "strlcat", nodecl.}
-proc getfsstat(buf:ptr UncheckedArray[statfs]; bufsize: clong;mode: cint) : cint {.importc: "getfsstat", nodecl.}
+proc getfsstat(buf:ptr statfs; bufsize: clong;mode: cint) : cint {.importc: "getfsstat", nodecl.}
     #https://www.freebsd.org/cgi/man.cgi?query=getfsstat&sektion=2&manpath=freebsd-release-ports
 
 proc sysctl(x: pointer, y: cint, z: pointer,
@@ -442,15 +441,17 @@ proc swap_memory*(): SwapMemory =
         free: totals.xsu_avail.int,
         percent: percent, sin: vm.pageins * PAGESIZE, sout: vm.pageouts * PAGESIZE)
 
+proc calloc*(p: int, newsize: csize_t): pointer {.
+    importc: "calloc", header: "<stdlib.h>".}
 
 proc disk_partitions*(all = false): seq[DiskPartition] =
     var
-        num:cint
+        num:int
         i:int
-        len: csize_t
+        len: clong
         flags: clong
         opts: array[400, char]
-        fs:ptr UncheckedArray[statfs]
+        fs:ptr statfs
     # get the number of mount points
     # Py_BEGIN_ALLOW_THREADS
     num = getfsstat(nil, 0, MNT_NOWAIT)
@@ -460,8 +461,8 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
     #     goto error;
     
     echo num
-    len = csize_t( sizeof(fs).uint * num.uint )
-    fs = cast[ptr UncheckedArray[statfs]](c_malloc(len))
+    len = sizeof(statfs) * num 
+    discard fs.c_realloc(sizeof(statfs).csize_t)
     if (fs == nil) :
         discard
         #     PyErr_SetFromErrno(PyExc_OSError);
@@ -481,9 +482,11 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
         mountpoint: cstring
         fstype: cstring
         popts: cstring
+        fss:ptr UncheckedArray[statfs]
     while i < num :
         # opts[0] = 0
-        flags = fs[i].f_flags
+        fss = cast[ptr UncheckedArray[statfs]](fs)
+        flags = fss[i].f_flags
         # see sys/mount.h
         if (flags and MNT_RDONLY) != 0:
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), "ro", sizeof(opts).csize_t)
@@ -535,12 +538,12 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",force", sizeof(opts).csize_t)
         if (flags and MNT_CMDFLAGS) != 0:
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",cmdflags", sizeof(opts).csize_t)
-        device = newString(sizeof(fs[i].f_mntfromname))
-        device.copyMem(fs[i].f_mntfromname.addr,sizeof(fs[i].f_mntfromname))
-        mountpoint = newString(sizeof(fs[i].f_mntonname))
-        mountpoint.copyMem(fs[i].f_mntonname.addr,sizeof(fs[i].f_mntonname))
-        fstype =  newString(sizeof(fs[i].f_fstypename))
-        fstype.copyMem(fs[i].f_fstypename.addr,sizeof(fs[i].f_fstypename))
+        device = newString(sizeof(fss[i].f_mntfromname))
+        device.copyMem(fss[i].f_mntfromname.addr,sizeof(fss[i].f_mntfromname))
+        mountpoint = newString(sizeof(fss[i].f_mntonname))
+        mountpoint.copyMem(fss[i].f_mntonname.addr,sizeof(fss[i].f_mntonname))
+        fstype =  newString(sizeof(fss[i].f_fstypename))
+        fstype.copyMem(fss[i].f_fstypename.addr,sizeof(fss[i].f_fstypename))
         popts =  newString(sizeof(opts))
         popts.copyMem(opts.addr, sizeof(opts))
         partition = DiskPartition( device: $(device), mountpoint: $(mountpoint), fstype: $(fstype), opts: $(popts) )
@@ -552,9 +555,9 @@ when isMainModule:
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
-    # echo pids()
+    # echo pids() # not complete
     echo cpu_count_logical()
     echo cpu_count_physical()
     echo virtual_memory()
     echo swap_memory()
-    echo disk_partitions()
+    # echo disk_partitions() # not complete
