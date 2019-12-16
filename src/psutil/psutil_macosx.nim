@@ -535,11 +535,15 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",force", sizeof(opts).csize_t)
         if (flags and MNT_CMDFLAGS) != 0:
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",cmdflags", sizeof(opts).csize_t)
-        device = cast[cstring](fs[i].f_mntfromname.addr)
-        mountpoint = cast[cstring](fs[i].f_mntonname.addr)
-        fstype = cast[cstring](fs[i].f_fstypename.addr)
-        popts = cast[cstring](opts.addr)
-        partition = DiskPartition( device: cast[string](device), mountpoint: cast[string](mountpoint), fstype:cast[string](fstype), opts:cast[string](popts) )
+        device = newString(sizeof(fs[i].f_mntfromname))
+        device.copyMem(fs[i].f_mntfromname.addr,sizeof(fs[i].f_mntfromname))
+        mountpoint = newString(sizeof(fs[i].f_mntonname))
+        mountpoint.copyMem(fs[i].f_mntonname.addr,sizeof(fs[i].f_mntonname))
+        fstype =  newString(sizeof(fs[i].f_fstypename))
+        fstype.copyMem(fs[i].f_fstypename.addr,sizeof(fs[i].f_fstypename))
+        popts =  newString(sizeof(opts))
+        popts.copyMem(opts.addr, sizeof(opts))
+        partition = DiskPartition( device: $(device), mountpoint: $(mountpoint), fstype: $(fstype), opts: $(popts) )
         result.add( partition )    
         i.inc
 
