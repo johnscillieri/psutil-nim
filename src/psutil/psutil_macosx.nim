@@ -2,6 +2,7 @@ import posix, segfaults
 import times except Time
 import common
 import strutils
+
 include "system/ansi_c"
 
 const
@@ -550,6 +551,52 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
         result.add( partition )    
         i.inc
 
+const UTX_USERSIZE = 256
+const UTX_LINESIZE = 32
+const UTX_IDSIZE = 4
+const UTX_HOSTSIZE = 256
+const USER_PROCESS = 7  # Normal process.
+
+type timeval_32 = object
+    tv_sec: int32  # Seconds.
+    tv_usec: int32 # Microseconds.
+
+type utmpx {.importc: "struct utmpx",header: "<utmpx.h>".}= object
+    ut_type: cshort    # Type of login.
+    ut_pid: Pid       # Process ID of login process.
+    ut_line: array[UTX_LINESIZE, char]  # Devicename.
+    ut_id: array[UTX_IDSIZE, char]              # Inittab ID.
+    ut_user: array[UTX_USERSIZE, char]  # Username.
+    ut_host: array[UTX_HOSTSIZE, char]  # Hostname for remote login.
+    ut_tv: timeval_32             # Time entry was made.
+    ut_pad: array[16,uint32] #reserved for future use
+
+proc getutxent(): ptr utmpx {.header: "<utmpx.h>".}
+proc setutxent(): void {.header: "<utmpx.h>".}
+proc endutxent(): void {.header: "<utmpx.h>".}
+
+proc users*(): seq[User] =
+    #Return currently connected users as a list of tuples.
+    result = newSeq[User]()
+    setutxent()
+    var ut = getutxent()
+    while ut != nil:
+        let is_user_proc = ut.ut_type == USER_PROCESS
+        if not is_user_proc:
+            ut = getutxent()
+            continue
+
+        var hostname = $ut.ut_host
+        if hostname == ":0.0" or hostname == ":0":
+            hostname = "localhost"
+
+        let user_tuple = User( name:($ut.ut_user.join().strip.replace("\x00", "")),
+                            terminal:($ut.ut_line.join().strip.replace("\x00", "")),
+                            started:ut.ut_tv.tv_sec.float )
+        result.add( user_tuple )
+        ut = getutxent()
+    endutxent()
+
 when isMainModule:
     echo boot_time()
     echo uptime()
@@ -560,4 +607,5 @@ when isMainModule:
     echo cpu_count_physical()
     echo virtual_memory()
     echo swap_memory()
+    echo users()
     # echo disk_partitions() # not complete
