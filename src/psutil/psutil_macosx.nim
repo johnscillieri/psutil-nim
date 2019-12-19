@@ -101,6 +101,7 @@ type statfs {.importc: "struct statfs", header: "<sys/mount.h>",pure, incomplete
 
     # https://linux.die.net/man/2/statfs
     f_bsize: clong
+    f_iosize: clong
     f_blocks: clong
     f_bfree: clong
     f_bavail: clong
@@ -116,6 +117,7 @@ type statfs {.importc: "struct statfs", header: "<sys/mount.h>",pure, incomplete
     f_oflags: cshort
     f_owner: uint
     f_reserved1:cshort
+    f_type:cshort
     f_reserved2:array[2,clong]
     f_fstypename:array[MFSNAMELEN,char] # fs type name */
     f_mntonname:array[MNAMELEN,char]    # directory on which mounted */
@@ -241,20 +243,20 @@ proc cpu_stats*(): tuple[ctx_switches, interrupts, soft_interrupts,
     return (vmstat.v_swtch.int, vmstat.v_intr.int, vmstat.v_soft.int,
             vmstat.v_syscall.int)
 
-type StructProc {.importc: "struct proc", header: "<sys/types.h>", pure,
+type StructProc {.importc: "struct proc", header: "<sys/proc.h>", pure,
         incompleteStruct, nodecl.} = object
     p_pid: cint
 var KERN_PROC {.importc: "KERN_PROC",
-        header: "<sys/types.h>", nodecl.}: cint
+        header: "<sys/sysctl.h>", nodecl.}: cint
 var KERN_PROC_ALL {.importc: "KERN_PROC_ALL",
-        header: "<sys/types.h>", nodecl.}: cint
+        header: "<sys/sysctl.h>", nodecl.}: cint
 type StructKinfoProc {.importc: "struct kinfo_proc",
-        header: "<sys/types.h>", pure, incompleteStruct,
+        header: "<sys/sysctl.h>", pure, incompleteStruct,
                 nodecl.} = object # https://opensource.apple.com/source/xnu/xnu-1456.1.26/bsd/sys/sysctl.h.auto.html
     kp_proc: StructProc
 
-proc get_proc_list(procList: ptr StructKinfoProc;
-        procCount: ptr csize_t): int {.inline, nodecl.} =
+proc get_proc_list(procList:ptr ref StructKinfoProc;
+        procCount: ptr csize_t): int  =
 
     var
         size, size2: csize_t
@@ -262,13 +264,13 @@ proc get_proc_list(procList: ptr StructKinfoProc;
         lim = 8
         ptrr: pointer
     var mib3 = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
-
+    
     assert not isNil(procList)
-    assert isNil(procList)
+    assert isNil(procList[])
     assert not isNil(procCount)
 
     procCount[] = 0
-
+ 
     while lim > 0:
         size = 0
         if sysctl(mib3.addr, 3, nil, size, nil, 0) == -1:
@@ -293,7 +295,9 @@ proc get_proc_list(procList: ptr StructKinfoProc;
                 # PyErr_SetFromOSErrnoWithSyscall("sysctl(KERN_PROC_ALL)")
                 return 1
         else:
-            procList[] = cast[StructKinfoProc](ptrr);
+           
+            # procList.copyMem(ptrr,sizeof(StructKinfoProc) * lim)
+            # procList[] = cast[ref StructKinfoProc](ptrr)
             procCount[] = size div sizeof(StructKinfoProc).csize_t
             if (procCount[] <= 0):
                 # PyErr_Format(PyExc_RuntimeError, "no PIDs found")
@@ -306,34 +310,40 @@ proc get_proc_list(procList: ptr StructKinfoProc;
 
 proc pids*(): seq[int] =
     var
-        proclist: ptr StructKinfoProc
-        orig_address: ptr StructKinfoProc
+        proclist:ref  StructKinfoProc
+        orig_address:ptr ref  StructKinfoProc
         num_processes: csize_t
         idx: csize_t
-        py_pid: ptr cint
-    let py_retlist = newSeq[int](1)
+        py_pid:  cint
+    var py_retlist = newSeq[int](1)
 
     if isNil(py_retlist.unsafeAddr):
         # return nil
         discard
-
-    if get_proc_list(proclist, num_processes.addr) != 0:
+    # GC_ref(proclist)
+    # GC_ref(orig_address)
+    
+    
+    if get_proc_list(proclist.addr, num_processes.addr) != 0:
         discard # goto error;
 
     # save the address of proclist so we can free it later
-    orig_address = proclist
+    orig_address = proclist.addr
     idx = 0
     while idx < num_processes:
-        py_pid = proclist[].kp_proc.p_pid.addr
-        if (isNil(py_pid)):
-            discard #goto error;
+        py_pid = proclist[].kp_proc.p_pid
+        # if (isNil(py_pid)):
+        #     discard #goto error;
+        py_retlist.add py_pid.int
         # if (PyList_Append(py_retlist, py_pid))
             # discard# goto error;
         # Py_CLEAR(py_pid);
         # proclist.inc
         idx.inc
 
-    c_free(orig_address)
+    c_free(orig_address.addr)
+    # GC_unref(proclist)
+    # GC_unref(orig_address)
     return py_retlist
 
 
@@ -460,10 +470,8 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
     # if (num == -1) :
     #     PyErr_SetFromErrno(PyExc_OSError);
     #     goto error;
-    
-    echo num
-    len = sizeof(statfs) * num 
-    discard fs.c_realloc(sizeof(statfs).csize_t)
+    len = sizeof(fs[]) * num 
+    fs = cast[ptr statfs](c_malloc(len.csize_t))
     if (fs == nil) :
         discard
         #     PyErr_SetFromErrno(PyExc_OSError);
@@ -471,7 +479,6 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
     # Py_BEGIN_ALLOW_THREADS
     num = getfsstat(fs, len.clong, MNT_NOWAIT)
     # Py_END_ALLOW_THREADS    
-    echo num,"#",len
     if (num == -1) :
         discard
         # PyErr_SetFromErrno(PyExc_OSError);
@@ -485,7 +492,6 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
         popts: cstring
         fss:ptr UncheckedArray[statfs]
     while i < num :
-        # opts[0] = 0
         fss = cast[ptr UncheckedArray[statfs]](fs)
         flags = fss[i].f_flags
         # see sys/mount.h
@@ -640,11 +646,11 @@ when isMainModule:
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
-    # echo pids() # not complete
+    #echo pids() # not complete
     echo cpu_count_logical()
     echo cpu_count_physical()
     echo virtual_memory()
     echo swap_memory()
     echo users()
     echo per_cpu_times()
-    # echo disk_partitions() # not complete
+    echo disk_partitions()
