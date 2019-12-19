@@ -692,8 +692,9 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
     ## installed on the system as a dict of raw tuples.
     result = newTable[string, NetIO]()
     var 
-        lim ,next: ptr char
+        next: ptr char
         buf:pointer
+        lim: int
         ifm:ptr if_msghdr
         mib:array[6,cint]
         name:string
@@ -709,20 +710,28 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         # discard
         # PyErr_NoMemory();
         # goto error;
-    let ret = sysctl(mib.addr, 6, buf, len, nil, 0) 
+    # buf = c_malloc( len.c_size_t )
+    let ret = sysctl(mib.addr, 6, nil, len, nil, 0) 
     echo "ret",ret,"len",len
-    buf = cast[ptr char](c_alloc( 1,len.c_size_t ))
+    
    
     if ret < 0:
         discard
         # PyErr_SetFromErrno(PyExc_OSError);
         # goto error;
-    lim = cast[ptr UnCheckedArray[char]](buf)[len].addr
-    next = cast[ptr UnCheckedArray[char]](buf)[0].addr
-    echo "lim",lim[].uint8
+    buf = c_malloc( len.c_size_t )
+    if sysctl(mib.addr, 6, buf, len, nil, 0) < 0:
+        discard
+        # PyErr_SetFromErrno(PyExc_OSError);
+        # goto error;
+    # lim = cast[ptr char](c_malloc( 8 ))
+    lim = cast[int](buf) + len.int
+    next = cast[ptr char](c_malloc( 8 ))
+    next.copyMem(buf,sizeof(buf))
+    echo "lim",lim
     var nextIndex = 0
     var nextValue = cast[ptr UnCheckedArray[char]](buf)[nextIndex]
-    while nextValue.int < lim[].int:
+    while nextValue.int < lim:
         ifm = cast[ptr if_msghdr](nextValue)
         nextIndex = nextValue.cint + ifm.ifm_msglen
         
@@ -749,7 +758,7 @@ when isMainModule:
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
-    echo pids()
+    # echo pids()
     echo cpu_count_logical()
     echo cpu_count_physical()
     echo virtual_memory()
@@ -757,4 +766,4 @@ when isMainModule:
     echo users()
     echo per_cpu_times()
     echo disk_partitions()
-    echo per_nic_net_io_counters()
+    # echo per_nic_net_io_counters()
