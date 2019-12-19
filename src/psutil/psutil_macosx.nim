@@ -1,4 +1,4 @@
-import posix, segfaults
+import posix, segfaults,tables
 import times except Time
 import common
 import strutils
@@ -274,6 +274,7 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
     while lim > 0:
         size = 0
         if sysctl(mib3.addr, 3, nil, size, nil, 0) == -1:
+            debugEcho "get_proc_list sysctl fails"
             # PyErr_SetFromOSErrnoWithSyscall("sysctl(KERN_PROC_ALL)")
             return 1
         size2 = size + (size shr 3) # add some
@@ -289,6 +290,7 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
             # PyErr_NoMemory()
             return 1;
         if sysctl(mib3.addr, 3, ptrr, size, nil, 0) == -1:
+            debugEcho "get_proc_list sysctl fails"
             err = errno
             c_free(ptrr)
             if err != ENOMEM:
@@ -311,35 +313,36 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
 proc pids*(): seq[int] =
     var
         proclist:ref  StructKinfoProc
-        # orig_address:ptr ref  StructKinfoProc
+        orig_address:ptr ref  StructKinfoProc
         num_processes: csize_t
         idx: csize_t
-        py_pid:  cint
-    var py_retlist = newSeq[int](1)
+        pid:  cint
+    result = newSeq[int](1)
     proclist = new StructKinfoProc
-    if isNil(py_retlist.unsafeAddr):
+    if isNil(result.unsafeAddr):
         # return nil
         discard
     
     if get_proc_list(proclist.addr, num_processes.addr) != 0:
+        debugEcho "get_proc_list fails"
         discard # goto error;
 
     # save the address of proclist so we can free it later
-    # orig_address = proclist.addr
+    orig_address = proclist.addr
     idx = 0
     while idx < num_processes:
-        py_pid = proclist[].kp_proc.p_pid
-        # if (isNil(py_pid)):
+        pid = proclist[].kp_proc.p_pid
+        # if (isNil(pid)):
         #     discard #goto error;
-        py_retlist.add py_pid.int
-        # if (PyList_Append(py_retlist, py_pid))
+        result.add pid.int
+        # if (PyList_Append(result, pid))
             # discard# goto error;
-        # Py_CLEAR(py_pid);
+        # CLEAR(pid);
         # proclist.inc
         idx.inc
 
     # c_free(orig_address.addr)
-    return py_retlist
+    return result
 
 
 proc cpu_count_logical*(): cint =
@@ -635,6 +638,112 @@ proc per_cpu_times*(): seq[CPUTimes] =
         result.add CPUTimes(user:user,nice:nice,system:system,idle:idle)
         i.inc
 
+const 
+    NET_RT_IFLIST2 = 6
+    PF_ROUTE = 17
+    CTL_NET = 4
+    RTM_IFINFO2 = 0x12
+
+type if_msghdr {.importc: "struct if_msghdr",header: "<sys/socket.h>",pure, incompleteStruct,nodecl.} = object
+    ifm_msglen:cint
+    ifm_type:cint
+
+type if_data64 {.importc: "struct if_data64",header: "<sys/socket.h>",nodecl.} = object
+    ifi_type: uint8
+    ifi_typelen: uint8
+    ifi_physical: uint8
+    ifi_addrlen: uint8
+    ifi_hdrlen: uint8
+    ifi_recvquota: uint8
+    ifi_xmitquota: uint8
+    ifi_unused1: uint8
+    ifi_mtu: uint32
+    ifi_metric: uint32
+    ifi_baudrate: uint32
+    ifi_ipackets: uint64
+    ifi_ierrors: uint64
+    ifi_opackets: uint64
+    ifi_oerrors: uint64
+    ifi_collisions: uint64
+    ifi_ibytes: uint64
+    ifi_obytes: uint64
+    ifi_imcasts: uint64
+    ifi_omcasts: uint64
+    ifi_iqdrops: uint64
+    ifi_noproto: uint64
+    ifi_recvtiming: uint32
+    ifi_xmittiming: uint32
+
+type if_msghdr2 {.importc: "struct if_msghdr2",header: "<net/if.h>",pure, incompleteStruct,nodecl.} = object
+    ifm_data:if_data64
+
+type sockaddr_dl {.importc: "struct sockaddr_dl",header: "<net/if_dl.h>",pure, incompleteStruct,nodecl.} = object
+    sdl_len:uint8
+    sdl_family:uint8
+    sdl_index:cshort
+    sdl_type:uint8
+    sdl_nlen:uint8
+    sdl_alen:uint8
+    sdl_slen:uint8
+    sdl_data:array[12,uint8]
+
+proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
+    ## Return network I/O statistics for every network interface
+    ## installed on the system as a dict of raw tuples.
+    result = newTable[string, NetIO]()
+    var 
+        lim ,next: ptr char
+        buf:pointer
+        ifm:ptr if_msghdr
+        mib:array[6,cint]
+        name:string
+        len:csize_t
+   
+    mib[0] = CTL_NET          # networking subsystem
+    mib[1] = PF_ROUTE         # type of information
+    mib[2] = 0                # protocol (IPPROTO_xxx)
+    mib[3] = 0                # address family
+    mib[4] = NET_RT_IFLIST2   # operation
+    mib[5] = 0
+    # if isNil(buf):
+        # discard
+        # PyErr_NoMemory();
+        # goto error;
+    let ret = sysctl(mib.addr, 6, buf, len, nil, 0) 
+    echo "ret",ret,"len",len
+    buf = cast[ptr char](c_alloc( 1,len.c_size_t ))
+   
+    if ret < 0:
+        discard
+        # PyErr_SetFromErrno(PyExc_OSError);
+        # goto error;
+    lim = cast[ptr UnCheckedArray[char]](buf)[len].addr
+    next = cast[ptr UnCheckedArray[char]](buf)[0].addr
+    echo "lim",lim[].uint8
+    var nextIndex = 0
+    var nextValue = cast[ptr UnCheckedArray[char]](buf)[nextIndex]
+    while nextValue.int < lim[].int:
+        ifm = cast[ptr if_msghdr](nextValue)
+        nextIndex = nextValue.cint + ifm.ifm_msglen
+        
+        echo ifm.ifm_type.intToStr & "#" & RTM_IFINFO2.intToStr
+        if (ifm.ifm_type == RTM_IFINFO2):
+            let if2m = cast[ptr if_msghdr2](ifm)
+            let sdl = cast[ptr sockaddr_dl](cast[ptr UncheckedArray[if_msghdr2]](if2m)[1].addr)
+            name = newStringOfCap(32)
+            name.addr.copyMem(sdl.sdl_data.addr,sizeof(sdl.sdl_data))
+            result[name] = NetIO( 
+                bytes_sent : if2m[].ifm_data.ifi_obytes.int,
+                bytes_recv : if2m[].ifm_data.ifi_ibytes.int,
+                packets_sent : if2m[].ifm_data.ifi_opackets.int,
+                packets_recv : if2m[].ifm_data.ifi_ipackets.int,
+                errin : if2m[].ifm_data.ifi_ierrors.int,
+                errout : if2m[].ifm_data.ifi_oerrors.int,
+                dropin : if2m[].ifm_data.ifi_iqdrops.int,
+                dropout : 0 # dropout not supported
+                )
+        nextValue = cast[ptr UnCheckedArray[char]](buf)[nextIndex]
+
 when isMainModule:
     echo boot_time()
     echo uptime()
@@ -648,3 +757,4 @@ when isMainModule:
     echo users()
     echo per_cpu_times()
     echo disk_partitions()
+    echo per_nic_net_io_counters()
