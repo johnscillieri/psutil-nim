@@ -687,19 +687,40 @@ type sockaddr_dl {.importc: "struct sockaddr_dl",header: "<net/if_dl.h>",pure, i
     sdl_slen:uint8
     sdl_data:array[12,uint8]
 
+template offset*[T](p: ptr T, count: int): ptr T =
+    ## Offset a pointer to T by count elements. Behavior is undefined on
+    ## overflow.
+    
+    # Actual behavior is wrapping, but this may be revised in the future to enable
+    # better optimizations.
+    
+    # We turn off checking here - too large counts is UB
+    {.checks: off.}
+    let bytes = count * sizeof(T)
+    cast[ptr T](offset(cast[pointer](p), bytes))
+
+template offset*(p: pointer, bytes: int): pointer =
+    ## Offset a memory address by a number of bytes. Behavior is undefined on
+    ## overflow.
+    # Actual behavior is wrapping, but this may be revised in the future to enable
+    # better optimizations
+    
+    # We assume two's complement wrapping behaviour for `uint`
+    cast[pointer](cast[uint](p) + cast[uint](bytes))
+      
 proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
     ## Return network I/O statistics for every network interface
     ## installed on the system as a dict of raw tuples.
     result = newTable[string, NetIO]()
     var 
         next: ptr char
-        buf:pointer
-        lim: int
+        buf:ptr char
+        lim: ptr char
         ifm:ptr if_msghdr
         mib:array[6,cint]
-        name:string
+        name:cstring
         len:csize_t
-   
+    # name = cstring("")
     mib[0] = CTL_NET          # networking subsystem
     mib[1] = PF_ROUTE         # type of information
     mib[2] = 0                # protocol (IPPROTO_xxx)
@@ -719,29 +740,23 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         discard
         # PyErr_SetFromErrno(PyExc_OSError);
         # goto error;
-    buf = c_malloc( len.c_size_t )
+    buf = cast[ptr char](c_malloc( len.c_size_t ))
     if sysctl(mib.addr, 6, buf, len, nil, 0) < 0:
         discard
         # PyErr_SetFromErrno(PyExc_OSError);
         # goto error;
-    # lim = cast[ptr char](c_malloc( 8 ))
-    lim = cast[int](buf) + len.int
-    next = cast[ptr char](c_malloc( 8 ))
-    next.copyMem(buf,sizeof(buf))
-    echo "lim",lim
-    var nextIndex = 0
-    var nextValue = cast[ptr UnCheckedArray[char]](buf)[nextIndex]
-    while nextValue.int < lim:
-        ifm = cast[ptr if_msghdr](nextValue)
-        nextIndex = nextValue.cint + ifm.ifm_msglen
-        
-        echo ifm.ifm_type.intToStr & "#" & RTM_IFINFO2.intToStr
+    lim = buf.offset(len.int)
+    next = buf
+    while cast[int](next) < cast[int](lim):
+        ifm = cast[ptr if_msghdr](next)
+        next = next.offset(ifm.ifm_msglen)
         if (ifm.ifm_type == RTM_IFINFO2):
             let if2m = cast[ptr if_msghdr2](ifm)
-            let sdl = cast[ptr sockaddr_dl](cast[ptr UncheckedArray[if_msghdr2]](if2m)[1].addr)
-            name = newStringOfCap(32)
-            name.addr.copyMem(sdl.sdl_data.addr,sizeof(sdl.sdl_data))
-            result[name] = NetIO( 
+            let sdl = cast[ptr sockaddr_dl](cast[ptr UncheckedArray[if_msghdr2]](if2m.offset(1)))
+            var a :array[sizeof(sdl.sdl_data),uint]
+            a.addr.copyMem(sdl.sdl_data.addr,sizeof(sdl.sdl_data))
+            name = cast[cstring](a.addr)  #@todo can be unicode ?
+            result[$name] = NetIO( 
                 bytes_sent : if2m[].ifm_data.ifi_obytes.int,
                 bytes_recv : if2m[].ifm_data.ifi_ibytes.int,
                 packets_sent : if2m[].ifm_data.ifi_opackets.int,
@@ -751,7 +766,6 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
                 dropin : if2m[].ifm_data.ifi_iqdrops.int,
                 dropout : 0 # dropout not supported
                 )
-        nextValue = cast[ptr UnCheckedArray[char]](buf)[nextIndex]
 
 when isMainModule:
     echo boot_time()
@@ -766,4 +780,4 @@ when isMainModule:
     echo users()
     echo per_cpu_times()
     echo disk_partitions()
-    # echo per_nic_net_io_counters()
+    echo per_nic_net_io_counters()
