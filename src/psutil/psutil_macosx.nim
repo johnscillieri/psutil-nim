@@ -597,6 +597,44 @@ proc users*(): seq[User] =
         ut = getutxent()
     endutxent()
 
+type processor_info_array_t {.importc: "processor_info_array_t",header: "<mach/processor_info.h>",pure, incompleteStruct,nodecl.} = object
+type processor_cpu_load_info_data_t {.importc: "processor_cpu_load_info_data_t",header: "<mach/processor_info.h>".} = object
+    cpu_ticks*: array[0..3, cint] 
+
+proc host_processor_info(a: mach_port_t; b: cint; c: ptr cint;d: ptr processor_info_array_t;e:ptr mach_msg_type_number_t) : cint{.importc:"host_processor_info",header: "<mach/processor_info.h>".} 
+
+var PROCESSOR_CPU_LOAD_INFO {.importc: "PROCESSOR_CPU_LOAD_INFO",header: "<mach/processor_info.h>".}:cint
+
+proc per_cpu_times*(): seq[CPUTimes] =
+    ## Return a list of tuples representing the CPU times for every
+    ## CPU available on the system.
+    result = newSeq[CPUTimes]()
+    var 
+        cpu_count:cint
+        i:int
+        info_array: processor_info_array_t
+        info_count:mach_msg_type_number_t
+        cpu_load_info:ptr processor_cpu_load_info_data_t
+        user,nice,system,idle:cdouble
+        
+    let host_port = mach_host_self()
+
+    let error = host_processor_info(host_port, PROCESSOR_CPU_LOAD_INFO,
+                                cpu_count.addr, info_array.addr, info_count.addr)
+    if error != KERN_SUCCESS:
+        raise newException(OSError, "host_processor_info(PROCESSOR_CPU_LOAD_INFO) syscall failed: $1" % mach_error_string(error))
+       
+    mach_port_deallocate(mach_task_self(), host_port)
+    cpu_load_info = cast[ptr processor_cpu_load_info_data_t](info_array)
+    let info = cast[ptr UnCheckedArray[processor_cpu_load_info_data_t]](cpu_load_info)
+    while i < cpu_count:
+        user = info[i].cpu_ticks[CPU_STATE_USER].cdouble / CLK_TCK
+        nice = info[i].cpu_ticks[CPU_STATE_NICE].cdouble / CLK_TCK
+        system = info[i].cpu_ticks[CPU_STATE_SYSTEM].cdouble / CLK_TCK
+        idle = info[i].cpu_ticks[CPU_STATE_IDLE].cdouble / CLK_TCK
+        result.add CPUTimes(user:user,nice:nice,system:system,idle:idle)
+        i.inc
+
 when isMainModule:
     echo boot_time()
     echo uptime()
@@ -608,4 +646,5 @@ when isMainModule:
     echo virtual_memory()
     echo swap_memory()
     echo users()
+    echo per_cpu_times()
     # echo disk_partitions() # not complete
