@@ -266,7 +266,7 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
     var mib3 = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
     
     assert not isNil(procList)
-    assert isNil(procList[])
+    # assert isNil(procList[])
     assert not isNil(procCount)
 
     procCount[] = 0
@@ -311,24 +311,21 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
 proc pids*(): seq[int] =
     var
         proclist:ref  StructKinfoProc
-        orig_address:ptr ref  StructKinfoProc
+        # orig_address:ptr ref  StructKinfoProc
         num_processes: csize_t
         idx: csize_t
         py_pid:  cint
     var py_retlist = newSeq[int](1)
-
+    proclist = new StructKinfoProc
     if isNil(py_retlist.unsafeAddr):
         # return nil
         discard
-    # GC_ref(proclist)
-    # GC_ref(orig_address)
-    
     
     if get_proc_list(proclist.addr, num_processes.addr) != 0:
         discard # goto error;
 
     # save the address of proclist so we can free it later
-    orig_address = proclist.addr
+    # orig_address = proclist.addr
     idx = 0
     while idx < num_processes:
         py_pid = proclist[].kp_proc.p_pid
@@ -341,9 +338,7 @@ proc pids*(): seq[int] =
         # proclist.inc
         idx.inc
 
-    c_free(orig_address.addr)
-    # GC_unref(proclist)
-    # GC_unref(orig_address)
+    # c_free(orig_address.addr)
     return py_retlist
 
 
@@ -415,7 +410,6 @@ proc virtual_memory*(): VirtualMemory =
         #         PyExc_RuntimeError, "sysctl(HW_MEMSIZE) syscall failed");
         # return nil
     let ret = sys_vminfo(vm.addr)
-    echo ret
     if not 1 == ret:
         return
     return VirtualMemory(total: total.int,
@@ -646,7 +640,7 @@ when isMainModule:
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
-    #echo pids() # not complete
+    echo pids()
     echo cpu_count_logical()
     echo cpu_count_physical()
     echo virtual_memory()
