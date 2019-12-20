@@ -1,4 +1,4 @@
-import posix, segfaults,tables
+import posix, segfaults,tables, encodings
 import times except Time
 import common
 import strutils
@@ -561,15 +561,11 @@ proc disk_partitions*(all = false): seq[DiskPartition] =
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",force", sizeof(opts).csize_t)
         if (flags and MNT_CMDFLAGS) != 0:
             discard strlcat(cast[ptr UncheckedArray[char]](opts.addr), ",cmdflags", sizeof(opts).csize_t)
-        device = newString(sizeof(fss[i].f_mntfromname))
-        device.copyMem(fss[i].f_mntfromname.addr,sizeof(fss[i].f_mntfromname))
-        mountpoint = newString(sizeof(fss[i].f_mntonname))
-        mountpoint.copyMem(fss[i].f_mntonname.addr,sizeof(fss[i].f_mntonname))
-        fstype =  newString(sizeof(fss[i].f_fstypename))
-        fstype.copyMem(fss[i].f_fstypename.addr,sizeof(fss[i].f_fstypename))
-        popts =  newString(sizeof(opts))
-        popts.copyMem(opts.addr, sizeof(opts))
-        partition = DiskPartition( device: $(device), mountpoint: $(mountpoint), fstype: $(fstype), opts: $(popts) )
+        device = cast[cstring](fss[i].f_mntfromname.addr)
+        mountpoint = cast[cstring](fss[i].f_mntonname.addr)
+        fstype =  cast[cstring](fss[i].f_fstypename.addr)
+        popts =  cast[cstring](opts.addr)
+        partition = DiskPartition( device: $(device) , mountpoint: $(mountpoint), fstype: $(fstype), opts: $(popts) )
         result.add( partition )    
         i.inc
 
@@ -663,9 +659,10 @@ const
     CTL_NET = 4
     RTM_IFINFO2 = 0x12
 
-type if_msghdr {.importc: "struct if_msghdr",header: "<sys/socket.h>",pure, incompleteStruct,nodecl.} = object
-    ifm_msglen:cint
-    ifm_type:cint
+type if_msghdr {.importc: "struct if_msghdr",header: "<sys/socket.h>",nodecl.} = object
+    ifm_msglen:cshort
+    ifm_version:uint8
+    ifm_type:uint8
 
 type if_data64 {.importc: "struct if_data64",header: "<sys/socket.h>",nodecl.} = object
     ifi_type: uint8
@@ -692,11 +689,22 @@ type if_data64 {.importc: "struct if_data64",header: "<sys/socket.h>",nodecl.} =
     ifi_noproto: uint64
     ifi_recvtiming: uint32
     ifi_xmittiming: uint32
+    ifi_lastchange: timeval_32
 
-type if_msghdr2 {.importc: "struct if_msghdr2",header: "<net/if.h>",pure, incompleteStruct,nodecl.} = object
+type if_msghdr2 {.importc: "struct if_msghdr2",header: "<net/if.h>",nodecl.} = object
+    ifm_msglen:cshort
+    ifm_version:uint8
+    ifm_type:uint8
+    ifm_addrs:cint
+    ifm_flags:cint
+    ifm_index:cshort
+    ifm_snd_len:cint
+    ifm_snd_maxlen:cint
+    ifm_snd_drops:cint
+    ifm_timer:cint
     ifm_data:if_data64
 
-type sockaddr_dl {.importc: "struct sockaddr_dl",header: "<net/if_dl.h>",pure, incompleteStruct,nodecl.} = object
+type sockaddr_dl {.importc: "struct sockaddr_dl",header: "<net/if_dl.h>",nodecl.} = object
     sdl_len:uint8
     sdl_family:uint8
     sdl_index:cshort
@@ -704,7 +712,7 @@ type sockaddr_dl {.importc: "struct sockaddr_dl",header: "<net/if_dl.h>",pure, i
     sdl_nlen:uint8
     sdl_alen:uint8
     sdl_slen:uint8
-    sdl_data:array[12,uint8]
+    sdl_data:array[12,char]
 
       
 proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
@@ -717,9 +725,12 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         lim: ptr char
         ifm:ptr if_msghdr
         mib:array[6,cint]
-        name:cstring
+        name :cstring
         len:csize_t
-    # name = cstring("")
+        nameChars:array[32,char]
+        if2m:ptr if_msghdr2
+        sdl:ptr sockaddr_dl
+
     mib[0] = CTL_NET          # networking subsystem
     mib[1] = PF_ROUTE         # type of information
     mib[2] = 0                # protocol (IPPROTO_xxx)
@@ -746,12 +757,12 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         ifm = cast[ptr if_msghdr](next)
         next = next.offset(ifm.ifm_msglen)
         if (ifm.ifm_type == RTM_IFINFO2):
-            let if2m = cast[ptr if_msghdr2](ifm)
-            let sdl = cast[ptr sockaddr_dl](cast[ptr UncheckedArray[if_msghdr2]](if2m.offset(1)))
-            var a :array[sizeof(sdl.sdl_data),uint]
-            a.addr.copyMem(sdl.sdl_data.addr,sizeof(sdl.sdl_data))
-            name = cast[cstring](a.addr)  #@todo can be unicode ?
-            result[$name] = NetIO( 
+            if2m = cast[ptr if_msghdr2](ifm)
+            sdl = cast[ptr sockaddr_dl](cast[ptr UncheckedArray[if_msghdr2]](if2m.offset(1)))
+            nameChars.addr.zeroMem(32)
+            nameChars.addr.copyMem(cast[pointer](sdl.sdl_data.addr),sdl.sdl_nlen)
+            name = cast[cstring](nameChars.addr)
+            result[ $name ] = NetIO( 
                 bytes_sent : if2m[].ifm_data.ifi_obytes.int,
                 bytes_recv : if2m[].ifm_data.ifi_ibytes.int,
                 packets_sent : if2m[].ifm_data.ifi_opackets.int,
