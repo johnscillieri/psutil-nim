@@ -5,6 +5,27 @@ import strutils
 
 include "system/ansi_c"
 
+template offset*[T](p: ptr T, count: int): ptr T =
+    ## Offset a pointer to T by count elements. Behavior is undefined on
+    ## overflow.
+    
+    # Actual behavior is wrapping, but this may be revised in the future to enable
+    # better optimizations.
+    
+    # We turn off checking here - too large counts is UB
+    {.checks: off.}
+    let bytes = count * sizeof(T)
+    cast[ptr T](offset(cast[pointer](p), bytes))
+
+template offset*(p: pointer, bytes: int): pointer =
+    ## Offset a memory address by a number of bytes. Behavior is undefined on
+    ## overflow.
+    # Actual behavior is wrapping, but this may be revised in the future to enable
+    # better optimizations
+    
+    # We assume two's complement wrapping behaviour for `uint`
+    cast[pointer](cast[uint](p) + cast[uint](bytes))
+
 const
     CTL_KERN = 1.cint          #
     KERN_SUCCESS = 0           # mach/kern_return.h.
@@ -255,7 +276,7 @@ type StructKinfoProc {.importc: "struct kinfo_proc",
                 nodecl.} = object # https://opensource.apple.com/source/xnu/xnu-1456.1.26/bsd/sys/sysctl.h.auto.html
     kp_proc: StructProc
 
-proc get_proc_list(procList:ptr ref StructKinfoProc;
+proc get_proc_list(procList:ptr ptr StructKinfoProc;
         procCount: ptr csize_t): int  =
 
     var
@@ -266,7 +287,7 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
     var mib3 = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
     
     assert not isNil(procList)
-    # assert isNil(procList[])
+    assert isNil(procList[])
     assert not isNil(procCount)
 
     procCount[] = 0
@@ -297,9 +318,7 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
                 # PyErr_SetFromOSErrnoWithSyscall("sysctl(KERN_PROC_ALL)")
                 return 1
         else:
-           
-            # procList.copyMem(ptrr,sizeof(StructKinfoProc) * lim)
-            # procList[] = cast[ref StructKinfoProc](ptrr)
+            procList[] = cast[ptr StructKinfoProc](ptrr)
             procCount[] = size div sizeof(StructKinfoProc).csize_t
             if (procCount[] <= 0):
                 # PyErr_Format(PyExc_RuntimeError, "no PIDs found")
@@ -312,24 +331,25 @@ proc get_proc_list(procList:ptr ref StructKinfoProc;
 
 proc pids*(): seq[int] =
     var
-        proclist:ref  StructKinfoProc
-        orig_address:ptr ref  StructKinfoProc
+        proclist:ptr  StructKinfoProc
+        orig_address:ptr  StructKinfoProc
         num_processes: csize_t
         idx: csize_t
         pid:  cint
     result = newSeq[int](1)
-    proclist = new StructKinfoProc
+    # proclist = (new StructKinfoProc).unsafeAddr
     if isNil(result.unsafeAddr):
         # return nil
         discard
-    
-    if get_proc_list(proclist.addr, num_processes.addr) != 0:
+    let proclistdupaddr = proclist.addr
+    if get_proc_list(proclistdupaddr, num_processes.addr) != 0:
         debugEcho "get_proc_list fails"
         discard # goto error;
 
     # save the address of proclist so we can free it later
-    orig_address = proclist.addr
+    orig_address = proclist
     idx = 0
+    var offsetIndex = 0
     while idx < num_processes:
         pid = proclist[].kp_proc.p_pid
         # if (isNil(pid)):
@@ -338,10 +358,11 @@ proc pids*(): seq[int] =
         # if (PyList_Append(result, pid))
             # discard# goto error;
         # CLEAR(pid);
-        # proclist.inc
+        proclist = proclist.offset(1)
+        offsetIndex.inc
         idx.inc
 
-    # c_free(orig_address.addr)
+    c_free(orig_address)
     return result
 
 
@@ -687,26 +708,6 @@ type sockaddr_dl {.importc: "struct sockaddr_dl",header: "<net/if_dl.h>",pure, i
     sdl_slen:uint8
     sdl_data:array[12,uint8]
 
-template offset*[T](p: ptr T, count: int): ptr T =
-    ## Offset a pointer to T by count elements. Behavior is undefined on
-    ## overflow.
-    
-    # Actual behavior is wrapping, but this may be revised in the future to enable
-    # better optimizations.
-    
-    # We turn off checking here - too large counts is UB
-    {.checks: off.}
-    let bytes = count * sizeof(T)
-    cast[ptr T](offset(cast[pointer](p), bytes))
-
-template offset*(p: pointer, bytes: int): pointer =
-    ## Offset a memory address by a number of bytes. Behavior is undefined on
-    ## overflow.
-    # Actual behavior is wrapping, but this may be revised in the future to enable
-    # better optimizations
-    
-    # We assume two's complement wrapping behaviour for `uint`
-    cast[pointer](cast[uint](p) + cast[uint](bytes))
       
 proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
     ## Return network I/O statistics for every network interface
@@ -731,11 +732,7 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
         # discard
         # PyErr_NoMemory();
         # goto error;
-    # buf = c_malloc( len.c_size_t )
     let ret = sysctl(mib.addr, 6, nil, len, nil, 0) 
-    echo "ret",ret,"len",len
-    
-   
     if ret < 0:
         discard
         # PyErr_SetFromErrno(PyExc_OSError);
@@ -772,7 +769,7 @@ when isMainModule:
     echo uptime()
     echo cpu_times()
     echo cpu_stats()
-    # echo pids()
+    echo pids()
     echo cpu_count_logical()
     echo cpu_count_physical()
     echo virtual_memory()
