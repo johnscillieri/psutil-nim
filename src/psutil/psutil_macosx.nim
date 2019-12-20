@@ -349,7 +349,6 @@ proc pids*(): seq[int] =
     # save the address of proclist so we can free it later
     orig_address = proclist
     idx = 0
-    var offsetIndex = 0
     while idx < num_processes:
         pid = proclist[].kp_proc.p_pid
         # if (isNil(pid)):
@@ -359,7 +358,6 @@ proc pids*(): seq[int] =
             # discard# goto error;
         # CLEAR(pid);
         proclist = proclist.offset(1)
-        offsetIndex.inc
         idx.inc
 
     c_free(orig_address)
