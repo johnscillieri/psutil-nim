@@ -1,4 +1,4 @@
-import posix, segfaults,tables, encodings
+import posix, segfaults,tables, psutil_posix
 import times except Time
 import common
 import strutils
@@ -773,6 +773,48 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
                 dropout : 0 # dropout not supported
                 )
 
+proc pid_exists*( pid:int ) :bool = psutil_posix.pid_exists( pid )
+
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
+#include <IOKit/storage/IOBlockStorageDriver.h>
+#include <IOKit/storage/IOMedia.h>
+#include <IOKit/IOBSD.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
+type CFDictionaryRef {.importc:"CFDictionaryRef",header:"<CoreFoundation/CoreFoundation.h>".} = object
+type CFMutableDictionaryRef {.importc:"CFDictionaryRef",header:"<CoreFoundation/CoreFoundation.h>".} = object
+var kIOMediaClass{.importc:"kIOMediaClass",header:"<IOKit/storage/IOMedia.h>".} :cstring 
+
+type io_iterator_t {.importc:"io_iterator_t",header:"<IOKit/IOBSD.h>".} = object
+var kIOReturnSuccess {.importc:"kIOReturnSuccess",header:"<IOKit/IOKitLib.h>".}:cint
+type io_object_t = mach_port_t #ipc_port_t
+type io_registry_entry_t = io_object_t
+# https://developer.apple.com/documentation/iokit/1514687-ioservicematching?language=occ
+proc IOServiceMatching(a:cstring):CFMutableDictionaryRef {.importc:"IOServiceMatching",header:"<IOKit/IOKitLib.h>".}
+
+proc IOServiceGetMatchingServices(a:mach_port_t,b: CFMutableDictionaryRef,c:pointer):cint {.importc:"io_iterator_t",header:"<IOKit/IOBSD.h>".}
+proc IOIteratorNext(it:io_iterator_t):io_object_t or cint {.importc:"IOIteratorNext",header:"<IOKit/IOKitLib.h>".}
+
+proc per_disk_io_counters*(): TableRef[string, DiskIO] = 
+    var 
+        parent_dict,props_dict,stats_dict:CFDictionaryRef
+        # parent,disk:io_registry_entry_t or cint
+        disk_list:io_iterator_t
+
+    var kIOMasterPortDefault: mach_port_t # https://developer.apple.com/documentation/iokit/kiomasterportdefault
+    # Get list of disks
+    if IOServiceGetMatchingServices(kIOMasterPortDefault,  IOServiceMatching(kIOMediaClass),disk_list.addr) != kIOReturnSuccess:
+
+        discard
+        # PyErr_SetString(
+        #     PyExc_RuntimeError, "unable to get the list of disks.");
+        # goto error;
+    # disk = IOIteratorNext(disk_list)
+    # while disk.int != 0:
+
+    
+
 when isMainModule:
     echo boot_time()
     echo uptime()
@@ -787,3 +829,4 @@ when isMainModule:
     echo per_cpu_times()
     echo disk_partitions()
     echo per_nic_net_io_counters()
+    echo pid_exists(0)
