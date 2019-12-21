@@ -2,6 +2,8 @@ import posix, segfaults,tables, psutil_posix
 import times except Time
 import common
 import strutils
+import ./arch/osx/process_info
+import ./arch/osx/socket
 
 include "system/ansi_c"
 
@@ -952,7 +954,102 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
             IOObjectRelease(disk)
         disk = IOIteratorNext(disk_list)
     IOObjectRelease ( cast[io_registry_entry_t](disk_list))
-    
+
+
+proc proc_pidinfo( pid:int, flavor:int, arg:uint64, pti:pointer, size:int ): int = 
+    #    var errno = 0
+       let ret = proc_pidinfo((int)pid, flavor, arg, pti, size)
+       if ((ret <= 0) or (ret < sizeof(pti))):
+        #    psutil_raise_for_pid(pid, "proc_pidinfo()")
+           return 0
+       return ret
+
+
+proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
+    result = newSeq[Connection]()
+    var 
+        pidinfo_result:int
+        iterations:int
+        i:int
+        fds_pointer:ptr  proc_fdinfo
+        fdp_pointer:ptr  proc_fdinfo
+        # vi:vnode_fdinfowithpath
+        si: socket_fdinfo 
+        nb:cint
+     
+    if pid == 0:
+        return result
+    elif pid == -1:
+        discard
+    else:
+        pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        iterations = pidinfo_result div PROC_PIDLISTFD_SIZE
+        while i < iterations:
+            fdp_pointer = cast[ptr UnCheckedArray[ proc_fdinfo]](fds_pointer)[i].addr
+            if fdp_pointer[].proc_fdtype == PROX_FDTYPE_SOCKET:
+                errno = 0
+                nb = proc_pidfdinfo(pid.cint,fdp_pointer[].proc_fd,PROC_PIDFDVNODEPATHINFO,si.addr,sizeof(si).uint32)
+                if nb <= 0 or nb < sizeof(si):
+                    if errno == EBADF:
+                        continue
+                    else:
+                        discard
+                        # psutil_raise_for_pid(   pid, "proc_pidinfo(PROC_PIDFDSOCKETINFO)");
+                        # goto error;
+                var 
+                    fd, family, typ, lport, rport, state:cint
+                    lip,rip:array[200,char]
+                    inseq:cint
+                fd = fdp_pointer[].proc_fd
+                family = si.psi.soi_family
+                typ = si.psi.soi_type
+                # Py_DECREF(py_family)
+                if inseq == 0:
+                    continue
+                if errno != 0:
+                    discard
+                    # PyErr_SetFromErrno(PyExc_OSError);
+                    # goto error;
+                if family == AF_INET or family == AF_INET6:
+                    if (family == AF_INET) :
+                        inet_ntop(AF_INET,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_46.i46a_addr4.addr,
+                                lip,
+                                sizeof(lip))
+                        inet_ntop(AF_INET,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddrina_46.i46a_addr4.addr,
+                                rip,
+                                sizeof(rip))
+                    else:
+                        inet_ntop(AF_INET6,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_6.addr,
+                                lip, sizeof(lip))
+                        inet_ntop(AF_INET6,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_6.addr,
+                                rip, sizeof(rip))
+                    if (errno != 0) :
+                        discard
+                        # PyErr_SetFromOSErrnoWithSyscall("inet_ntop()");
+                        # goto error;
+                    lport = ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport)
+                    rport = ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_fport)
+                    if (type == SOCK_STREAM):
+                        state = cast[cint](si.psi.soi_proto.pri_tcp.tcpsi_state)
+                    else:
+                        state = PSUTIL_CONN_NONE
+                elif (family == AF_UNIX) {
+                    py_laddr = PyUnicode_DecodeFSDefault(si.psi.soi_proto.pri_un.unsi_addr.ua_sun.sun_path)
+                    if !py_laddr:
+                        discard
+                        # goto error;
+                    py_raddr = PyUnicode_DecodeFSDefault(
+                        si.psi.soi_proto.pri_un.unsi_caddr.ua_sun.sun_path)
+                    if !py_raddr:
+                        discard
+                        # goto error;
+
+    free(fds_pointer)
+
 
 when isMainModule:
     echo boot_time()
@@ -971,3 +1068,4 @@ when isMainModule:
     echo pid_exists(0)
     echo per_disk_io_counters()
     # proc_connections -> net_connections
+    # net_if_stats
