@@ -782,27 +782,72 @@ proc pid_exists*( pid:int ) :bool = psutil_posix.pid_exists( pid )
 #include <IOKit/IOBSD.h>
 #include <IOKit/ps/IOPowerSources.h>
 #include <IOKit/ps/IOPSKeys.h>
-type CFDictionaryRef {.importc:"CFDictionaryRef",header:"<CoreFoundation/CoreFoundation.h>".} = object
-type CFMutableDictionaryRef {.importc:"CFDictionaryRef",header:"<CoreFoundation/CoreFoundation.h>".} = object
-var kIOMediaClass{.importc:"kIOMediaClass",header:"<IOKit/storage/IOMedia.h>".} :cstring 
+# 
+# {.passL: "-I '/System/Library/Frameworks' ".}
+{.passC:"-fconstant-cfstrings " .}
+{.passL: "-framework CoreFoundation -framework IOKit".}
 
-type io_iterator_t {.importc:"io_iterator_t",header:"<IOKit/IOBSD.h>".} = object
-var kIOReturnSuccess {.importc:"kIOReturnSuccess",header:"<IOKit/IOKitLib.h>".}:cint
+type CFStringEncoding = uint32
+# type CFDictionary {.importc:"CFDictionary",header:"<CoreFoundation/CoreFoundation.h>".} =  object
+type CFDictionaryRef {.importc:"CFDictionaryRef",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = ref object
+# type CFMutableDictionary {.importc:"CFMutableDictionary",header:"<CoreFoundation/CoreFoundation.h>".} =  object
+
+type CFMutableDictionaryRef {.importc:"CFMutableDictionaryRef",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = ref object
+type CFAllocatorRef {.importc:"CFAllocatorRef",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = object
+type IOOptionBits {.importc:"IOOptionBits",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = object
+# type CFString {.importc:"CFStringRef",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} =  object
+type CFStringRef {.importc:"CFStringRef",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = ref  object
+type CFNumber {.importc:"CFNumber",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = object
+type CFNumberRef {.importc:"CFNumberRef",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = ref object
+type CFNumberType {.importc:"CFNumberType",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} = distinct cint
+
+proc CFStringGetCString(theString:CFStringRef,buffer:ptr char,bufferSize:clong ,encoding:CFStringEncoding) {.importc:"CFStringGetCString",header:"<CoreFoundation/CoreFoundation.h>",nodecl.}
+proc CFSTR(str:cstring):cstring{.importc:"CFSTR",header:"<CoreFoundation/CoreFoundation.h>",varargs,nodecl.} # https://developer.apple.com/documentation/corefoundation/cfstr?language=occ
+proc CFDictionaryGetValue(theDict:CFDictionaryRef,key:pointer):pointer{.importc:"CFDictionaryGetValue",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} 
+proc CFStringGetSystemEncoding():CFStringEncoding{.importc:"CFStringGetSystemEncoding",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} 
+proc CFNumberGetValue(number:CFNumberRef,theType:CFNumberType,valuePtr:pointer):bool{.importc:"CFNumberGetValue",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} 
+proc CFRelease( cf:ref object){.importc:"CFRelease",header:"<CoreFoundation/CoreFoundation.h>",nodecl.} 
+
+var kIOMediaClass{.importc:"kIOMediaClass",header:"<IOKit/storage/IOMedia.h>",nodecl.} :cstring 
+
+type io_iterator_t {.importc:"io_iterator_t",header:"<IOKit/IOBSD.h>",nodecl.} = object
+var kIOReturnSuccess {.importc:"kIOReturnSuccess",header:"<IOKit/IOKitLib.h>",nodecl.}:cint
+var kIOServicePlane {.importc:"kIOServicePlane",header:"<IOKit/IOKitLib.h>",nodecl.}:cstring
+var kCFAllocatorDefault {.importc:"kCFAllocatorDefault",header:"<CoreFoundation/CoreFoundation.h>",nodecl.}:CFAllocatorRef
+const kNilOptions = 0
+const kIOBlockStorageDriverStatisticsKey = "Statistics"
+const kIOBlockStorageDriverStatisticsReadsKey = "Operations (Read)"
+const kIOBlockStorageDriverStatisticsWritesKey = "Operations (Write)"
+const kIOBlockStorageDriverStatisticsBytesReadKey = "Bytes (Read)"
+const kIOBlockStorageDriverStatisticsTotalReadTimeKey  = "Total Time (Read)"
+const kIOBlockStorageDriverStatisticsTotalWriteTimeKey = "Total Time (Write)"
+
 type io_object_t = mach_port_t #ipc_port_t
 type io_registry_entry_t = io_object_t
 # https://developer.apple.com/documentation/iokit/1514687-ioservicematching?language=occ
 proc IOServiceMatching(a:cstring):CFMutableDictionaryRef {.importc:"IOServiceMatching",header:"<IOKit/IOKitLib.h>".}
 
-proc IOServiceGetMatchingServices(a:mach_port_t,b: CFMutableDictionaryRef,c:pointer):cint {.importc:"io_iterator_t",header:"<IOKit/IOBSD.h>".}
-proc IOIteratorNext(it:io_iterator_t):io_object_t or cint {.importc:"IOIteratorNext",header:"<IOKit/IOKitLib.h>".}
+proc IOServiceGetMatchingServices(a:mach_port_t,b: CFMutableDictionaryRef,c:pointer):cint {.importc:"IOServiceGetMatchingServices",header:"<IOKit/IOBSD.h>",nodecl.}
+proc IOIteratorNext(it:io_iterator_t): io_object_t {.importc:"IOIteratorNext",header:"<IOKit/IOKitLib.h>",nodecl.} #io_object_t or cint
+proc IOObjectRelease(it:io_registry_entry_t): void {.importc:"IOObjectRelease",header:"<IOKit/IOKitLib.h>",nodecl.} 
+proc IORegistryEntryGetParentEntry(entry:io_registry_entry_t,plane:cstring,parent:ptr io_registry_entry_t): cint {.importc:"IORegistryEntryGetParentEntry",header:"<IOKit/IOKitLib.h>",nodecl.} #io_object_t or cint
+proc IOObjectConformsTo(a:io_registry_entry_t,b:cstring): bool {.importc:"IOObjectConformsTo",header:"<IOKit/IOKitLib.h>",nodecl.} 
+proc IORegistryEntryCreateCFProperties(a:io_registry_entry_t,b:ptr CFMutableDictionaryRef,c:pointer,d:cint) : cint {.importc:"IORegistryEntryCreateCFProperties",header:"<IOKit/IOKitLib.h>",nodecl.}
+
+const kMaxDiskNameSize = 64
+const kIOBSDNameKey =  "BSD Name"
+const kCFNumberSInt64Type = CFNumberType(4)
+const kIOBlockStorageDriverStatisticsBytesWrittenKey = "Bytes (Write)"
 
 proc per_disk_io_counters*(): TableRef[string, DiskIO] = 
+    result = newTable[string, DiskIO]()
     var 
         parent_dict,props_dict,stats_dict:CFDictionaryRef
-        # parent,disk:io_registry_entry_t or cint
+        parent,disk:io_registry_entry_t #or cint
         disk_list:io_iterator_t
 
     var kIOMasterPortDefault: mach_port_t # https://developer.apple.com/documentation/iokit/kiomasterportdefault
+    var kCFAllocatorDefault:pointer = nil # This is a synonym for NULL.
     # Get list of disks
     if IOServiceGetMatchingServices(kIOMasterPortDefault,  IOServiceMatching(kIOMediaClass),disk_list.addr) != kIOReturnSuccess:
 
@@ -810,9 +855,103 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
         # PyErr_SetString(
         #     PyExc_RuntimeError, "unable to get the list of disks.");
         # goto error;
-    # disk = IOIteratorNext(disk_list)
-    # while disk.int != 0:
+    disk = IOIteratorNext(disk_list)
+    while cast[cint](disk) != 0:
+        # parent_dict = nil
+        # props_dict = nil
+        # stats_dict = nil
+        if (IORegistryEntryGetParentEntry(disk, kIOServicePlane, parent.addr) != kIOReturnSuccess) :
+               
+            # PyErr_SetString(PyExc_RuntimeError,
+            #                 "unable to get the disk's parent.");
+            IOObjectRelease(disk);
+            # goto error;
+        if IOObjectConformsTo(parent, "IOBlockStorageDriver"):
+            if IORegistryEntryCreateCFProperties(disk,cast[ptr CFMutableDictionaryRef](parent_dict.addr),kCFAllocatorDefault,kNilOptions ) != kIOReturnSuccess:
+                
 
+                # PyErr_SetString(PyExc_RuntimeError,
+                #                 "unable to get the parent's properties.");
+                IOObjectRelease(disk)
+                IOObjectRelease(parent)
+                # goto error;
+        
+            if IORegistryEntryCreateCFProperties(parent,cast[ptr CFMutableDictionaryRef](props_dict.addr),kCFAllocatorDefault,kNilOptions ) != kIOReturnSuccess:
+            
+
+                # PyErr_SetString(PyExc_RuntimeError,
+                #                 "unable to get the parent's properties.");
+                IOObjectRelease(disk)
+                IOObjectRelease(parent)
+                # goto error;
+
+            if IORegistryEntryCreateCFProperties(parent,cast[ptr CFMutableDictionaryRef](props_dict.addr),kCFAllocatorDefault,kNilOptions ) != kIOReturnSuccess:
+        
+
+                # PyErr_SetString(PyExc_RuntimeError,
+                #                 "unable to get the parent's properties.");
+                IOObjectRelease(disk)
+                IOObjectRelease(parent)
+                # goto error;
+            var
+                disk_name_ref:CFStringRef = cast[CFStringRef](CFDictionaryGetValue(parent_dict, CFSTR(kIOBSDNameKey)))
+                disk_name:array[kMaxDiskNameSize,char]
+
+            CFStringGetCString(disk_name_ref, cast[ptr char](disk_name.addr),kMaxDiskNameSize,CFStringGetSystemEncoding())
+
+            stats_dict = cast[CFDictionaryRef](CFDictionaryGetValue(props_dict, CFSTR(kIOBlockStorageDriverStatisticsKey)))
+ 
+            if isNil(stats_dict.addr):
+                discard
+                # PyErr_SetString(PyExc_RuntimeError,
+                #                 "Unable to get disk stats.");
+                # goto error;
+            var 
+                number:CFNumberRef 
+                reads:int64  = 0
+                writes:int64  = 0
+                read_bytes:int64  = 0
+                write_bytes:int64  = 0
+                read_time:int64  = 0
+                write_time:int64  = 0
+                name:cstring
+    
+            # Get disk reads/writes
+            number = cast[CFNumberRef]( CFDictionaryGetValue(stats_dict,CFSTR(kIOBlockStorageDriverStatisticsReadsKey)) )
+            if not isNil(number.addr):
+                discard CFNumberGetValue(number, kCFNumberSInt64Type, reads.addr)
+            number = cast[CFNumberRef]( CFDictionaryGetValue(stats_dict,CFSTR(kIOBlockStorageDriverStatisticsWritesKey)) )
+            if not isNil(number.addr):
+                discard CFNumberGetValue(number, kCFNumberSInt64Type, writes.addr)
+            # Get disk bytes read/written
+            number = cast[CFNumberRef](CFDictionaryGetValue(stats_dict,CFSTR(kIOBlockStorageDriverStatisticsBytesReadKey)))
+            if not isNil(number.addr):
+                discard CFNumberGetValue(number, kCFNumberSInt64Type, read_bytes.addr)
+            number = cast[CFNumberRef](CFDictionaryGetValue( stats_dict, CFSTR(kIOBlockStorageDriverStatisticsBytesWrittenKey)))
+            if not isNil(number.addr):
+                discard CFNumberGetValue(number, kCFNumberSInt64Type, write_bytes.addr)
+            # Get disk time spent reading/writing (nanoseconds)
+            number = cast[CFNumberRef](CFDictionaryGetValue( stats_dict, CFSTR(kIOBlockStorageDriverStatisticsTotalReadTimeKey)))
+            if not isNil(number.addr):
+                discard CFNumberGetValue(number, kCFNumberSInt64Type, read_time.addr)
+            number = cast[CFNumberRef](CFDictionaryGetValue( stats_dict, CFSTR(kIOBlockStorageDriverStatisticsTotalWriteTimeKey)))
+            if not isNil(number.addr):
+                discard CFNumberGetValue(number, kCFNumberSInt64Type, write_time.addr)
+
+            # Read/Write time on macOS comes back in nanoseconds and in psutil
+            # we've standardized on milliseconds so do the conversion.
+            name = cast[cstring](disk_name.addr)
+            result[$name] = DiskIO( 
+                read_count:reads.int, write_count:writes.int,
+                read_bytes:read_bytes.int, write_bytes:write_bytes.int,
+                read_time:read_time.int, write_time:write_time.int
+                )
+            CFRelease(parent_dict)
+            IOObjectRelease(parent)
+            CFRelease(props_dict)
+            IOObjectRelease(disk)
+        disk = IOIteratorNext(disk_list)
+    IOObjectRelease ( cast[io_registry_entry_t](disk_list))
     
 
 when isMainModule:
@@ -830,3 +969,5 @@ when isMainModule:
     echo disk_partitions()
     echo per_nic_net_io_counters()
     echo pid_exists(0)
+    echo per_disk_io_counters()
+    # proc_connections -> net_connections
