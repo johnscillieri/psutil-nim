@@ -34,7 +34,8 @@ type socket_fdinfo* {.importc:"struct socket_fdinfo",header:"<sys/proc_info.h>".
     psi*:socket_info
 
 
-proc proc_pidinfo*(pid:cint,flavor:cint,arg:uint64,buffer:pointer,retval:ptr int32):cint{.importc:"proc_pidinfo",header:"<sys/proc_info.h>".}
+proc proc_pidinfo*(pid:cint,flavor:cint,arg:uint64,buffer:pointer,buffer_size:uint32,retval:ptr int32):cint{.importc:"proc_pidinfo",header:"<sys/proc_info.h>".}
+# proc proc_pidinfo*(pid:cint,flavor:cint,arg:uint64,buffer:pointer,buffer_size:uint32):cint{.importc:"proc_pidinfo",header:"<sys/proc_info.h>".}
 
 proc proc_pidfdinfo*(pid:cint,flavor:cint,fd:cint,buffer:pointer,buffer_size:uint32,retval:ptr int32):cint{.importc:"proc_pidfdinfo",header:"<sys/proc_info.h>",varargs.}
 proc proc_pidfdinfo*(pid:cint,flavor:cint,fd:cint,buffer:pointer,buffer_size:uint32):cint{.importc:"proc_pidfdinfo",header:"<sys/proc_info.h>",varargs.}

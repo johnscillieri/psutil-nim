@@ -1,4 +1,4 @@
-import posix, segfaults,tables, psutil_posix
+import posix, segfaults,tables, psutil_posix, nativesockets
 import times except Time
 import common
 import strutils
@@ -777,15 +777,6 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
 
 proc pid_exists*( pid:int ) :bool = psutil_posix.pid_exists( pid )
 
-#include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/IOKitLib.h>
-#include <IOKit/storage/IOBlockStorageDriver.h>
-#include <IOKit/storage/IOMedia.h>
-#include <IOKit/IOBSD.h>
-#include <IOKit/ps/IOPowerSources.h>
-#include <IOKit/ps/IOPSKeys.h>
-# 
-# {.passL: "-I '/System/Library/Frameworks' ".}
 {.passC:"-fconstant-cfstrings " .}
 {.passL: "-framework CoreFoundation -framework IOKit".}
 
@@ -859,18 +850,14 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
         # goto error;
     disk = IOIteratorNext(disk_list)
     while cast[cint](disk) != 0:
-        # parent_dict = nil
-        # props_dict = nil
-        # stats_dict = nil
-        if (IORegistryEntryGetParentEntry(disk, kIOServicePlane, parent.addr) != kIOReturnSuccess) :
-               
+
+        if (IORegistryEntryGetParentEntry(disk, kIOServicePlane, parent.addr) != kIOReturnSuccess):
             # PyErr_SetString(PyExc_RuntimeError,
             #                 "unable to get the disk's parent.");
             IOObjectRelease(disk);
             # goto error;
         if IOObjectConformsTo(parent, "IOBlockStorageDriver"):
             if IORegistryEntryCreateCFProperties(disk,cast[ptr CFMutableDictionaryRef](parent_dict.addr),kCFAllocatorDefault,kNilOptions ) != kIOReturnSuccess:
-                
 
                 # PyErr_SetString(PyExc_RuntimeError,
                 #                 "unable to get the parent's properties.");
@@ -879,8 +866,6 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
                 # goto error;
         
             if IORegistryEntryCreateCFProperties(parent,cast[ptr CFMutableDictionaryRef](props_dict.addr),kCFAllocatorDefault,kNilOptions ) != kIOReturnSuccess:
-            
-
                 # PyErr_SetString(PyExc_RuntimeError,
                 #                 "unable to get the parent's properties.");
                 IOObjectRelease(disk)
@@ -888,8 +873,6 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
                 # goto error;
 
             if IORegistryEntryCreateCFProperties(parent,cast[ptr CFMutableDictionaryRef](props_dict.addr),kCFAllocatorDefault,kNilOptions ) != kIOReturnSuccess:
-        
-
                 # PyErr_SetString(PyExc_RuntimeError,
                 #                 "unable to get the parent's properties.");
                 IOObjectRelease(disk)
@@ -957,13 +940,17 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
 
 
 proc proc_pidinfo( pid:int, flavor:int, arg:uint64, pti:pointer, size:int ): int = 
-    #    var errno = 0
-       let ret = proc_pidinfo((int)pid, flavor, arg, pti, size)
-       if ((ret <= 0) or (ret < sizeof(pti))):
+    errno = 0
+    var ret:cint
+    var retval:int32
+    ret =  process_info.proc_pidinfo(pid.cint, flavor.cint, arg, pti, size.uint32,retval.addr)
+    debugEcho "proc_pidinfo",ret,"#",retval
+    if ((ret <= 0) or (ret < sizeof(pti))):
         #    psutil_raise_for_pid(pid, "proc_pidinfo()")
-           return 0
-       return ret
+        return 0
+    return ret.int
 
+const PSUTIL_CONN_NONE = 128
 
 proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
     result = newSeq[Connection]()
@@ -973,9 +960,10 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
         i:int
         fds_pointer:ptr  proc_fdinfo
         fdp_pointer:ptr  proc_fdinfo
-        # vi:vnode_fdinfowithpath
         si: socket_fdinfo 
         nb:cint
+        laddr:cstring
+        raddr:cstring
      
     if pid == 0:
         return result
@@ -983,9 +971,16 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
         discard
     else:
         pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        fds_pointer = cast[ptr proc_fdinfo](c_malloc(sizeof(pidinfo_result).c_size_t))
+        pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds_pointer, pidinfo_result)
+        if (pidinfo_result <= 0):
+            discard
+            # goto error;
         iterations = pidinfo_result div PROC_PIDLISTFD_SIZE
+        debugEcho "iterations",pidinfo_result
         while i < iterations:
             fdp_pointer = cast[ptr UnCheckedArray[ proc_fdinfo]](fds_pointer)[i].addr
+            
             if fdp_pointer[].proc_fdtype == PROX_FDTYPE_SOCKET:
                 errno = 0
                 nb = proc_pidfdinfo(pid.cint,fdp_pointer[].proc_fd,PROC_PIDFDVNODEPATHINFO,si.addr,sizeof(si).uint32)
@@ -1003,52 +998,73 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
                 fd = fdp_pointer[].proc_fd
                 family = si.psi.soi_family
                 typ = si.psi.soi_type
-                # Py_DECREF(py_family)
+                # apply filters
+                # py_family = PyLong_FromLong((long)family);
+                # inseq = PySequence_Contains(py_af_filter, py_family);
+                # Py_DECREF(py_family);
+                # if (inseq == 0)
+                #     continue;
+                # py_type = PyLong_FromLong((long)type);
+                # inseq = PySequence_Contains(py_type_filter, py_type);
+                # Py_DECREF(py_type);
+                
                 if inseq == 0:
                     continue
                 if errno != 0:
                     discard
                     # PyErr_SetFromErrno(PyExc_OSError);
                     # goto error;
-                if family == AF_INET or family == AF_INET6:
-                    if (family == AF_INET) :
-                        inet_ntop(AF_INET,
+                if family == posix.AF_INET or family == posix.AF_INET6:
+                    if (family == posix.AF_INET) :
+                        discard inet_ntop(posix.AF_INET,
                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_46.i46a_addr4.addr,
-                                lip,
-                                sizeof(lip))
-                        inet_ntop(AF_INET,
-                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddrina_46.i46a_addr4.addr,
-                                rip,
-                                sizeof(rip))
+                                cast[cstring](lip.addr),
+                                sizeof(lip).int32)
+                        discard inet_ntop(posix.AF_INET,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_46.i46a_addr4.addr,
+                                cast[cstring](rip.addr),
+                                sizeof(rip).int32)
                     else:
-                        inet_ntop(AF_INET6,
+                        discard inet_ntop(posix.AF_INET6,
                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_6.addr,
-                                lip, sizeof(lip))
-                        inet_ntop(AF_INET6,
+                                cast[cstring](lip.addr),
+                                sizeof(lip).int32
+                                )
+                        discard inet_ntop(posix.AF_INET6,
                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_6.addr,
-                                rip, sizeof(rip))
+                                cast[cstring](rip.addr),
+                                sizeof(rip).int32
+                                )
                     if (errno != 0) :
                         discard
                         # PyErr_SetFromOSErrnoWithSyscall("inet_ntop()");
                         # goto error;
-                    lport = ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport)
-                    rport = ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_fport)
-                    if (type == SOCK_STREAM):
+                    lport = posix.ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport.uint16).cint
+                    rport = posix.ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_fport.uint16).cint
+                    if (typ == posix.SOCK_STREAM):
                         state = cast[cint](si.psi.soi_proto.pri_tcp.tcpsi_state)
                     else:
                         state = PSUTIL_CONN_NONE
-                elif (family == AF_UNIX) {
-                    py_laddr = PyUnicode_DecodeFSDefault(si.psi.soi_proto.pri_un.unsi_addr.ua_sun.sun_path)
-                    if !py_laddr:
+                elif (family == posix.AF_UNIX):
+                    laddr = cast[cstring](si.psi.soi_proto.pri_un.unsi_addr.ua_sun.sun_path.addr)
+                    if not isNil(laddr):
                         discard
                         # goto error;
-                    py_raddr = PyUnicode_DecodeFSDefault(
-                        si.psi.soi_proto.pri_un.unsi_caddr.ua_sun.sun_path)
-                    if !py_raddr:
+                    raddr = cast[cstring](si.psi.soi_proto.pri_un.unsi_caddr.ua_sun.sun_path.addr)
+                    if not isNil(raddr):
                         discard
                         # goto error;
+                result.add Connection(fd:fd,
+                    family: family,
+                    type: typ,
+                    laddr: $laddr,
+                    lport: Port(lport),
+                    raddr: $raddr,
+                    rport: Port(rport),
+                    status: $state,
+                    pid:pid)
 
-    free(fds_pointer)
+    cfree(fds_pointer)
 
 
 when isMainModule:
@@ -1067,5 +1083,6 @@ when isMainModule:
     echo per_nic_net_io_counters()
     echo pid_exists(0)
     echo per_disk_io_counters()
+    # echo net_connections(pid = 593) # not finished
     # proc_connections -> net_connections
     # net_if_stats

@@ -32,17 +32,28 @@ type sockbuf_info* = object
     sbi_flags*:cshort
     sbi_timeo*:cshort
 
-type insi_v4 = object
+type insi_v4* = object
     in4_tos*:cuchar # u_char type of service */
 
-type insi_v6 = object
+type insi_v6* = object
     in6_hlim*:uint8
     in6_cksum*:cint
     in6_ifindex*:cushort
     in6_hops*:cshort
+type in_addr = object
+    s_addr:culong       # load with inet_pton()
 
+type in4in6_addr* {.importc:"struct in4in6_addr",header:"<netinet/in.h>".} = object
+    i46a_pad32*: array[3,uint32]
+    i46a_addr4*: in_addr
 
-type in_sockinfo* = object
+type in6_addr*{.importc:"struct in6_addr",header:"<netinet/in.h>".} = object
+
+type address*  {.importc:"struct addr",header:"<netinet/in.h>".} = object
+    ina_46*: in4in6_addr
+    ina_6*: in6_addr
+
+type in_sockinfo* {.importc:"struct in_sockinfo",header:"<sys/proc_info.h>".} = object
     insi_fport*:cint  # foreign port */
     insi_lport*:cint  # local port */
     insi_gencnt*:uint64 # generation count of this instance */
@@ -52,12 +63,12 @@ type in_sockinfo* = object
     insi_ip_ttl*:uint8 # time to live proto */
     rfu_1*:uint32      # reserved */
     # protocol dependent part */
-    insi_faddr*:pointer # foreign host table entry */
-    insi_laddr*:pointer # local host table entry */
+    insi_faddr*:address # foreign host table entry */
+    insi_laddr*:address # local host table entry */
     insi_v4*:insi_v4
     insi_v6*:insi_v6
 
-type tcp_sockinfo = object
+type tcp_sockinfo* = object
     tcpsi_ini*:in_sockinfo
     tcpsi_state*:cint
     tcpsi_timer*:array[TSI_T_NTIMERS,cint]
@@ -66,9 +77,38 @@ type tcp_sockinfo = object
     rfu_1*:uint32    # reserved */
     tcpsi_tp*:uint64 # opaque handle of TCP protocol control block */
 
+type sockaddr_un*{.importc:"struct sockaddr_un",header:"<sys/un.h>",incompleteStruct,nodecl.}= object
+    sun_path*:ptr char
+
+const SOCK_MAXADDRLEN = 0xff
+
+type union_unsi_caddr  = object
+    ua_sun*: sockaddr_un
+    ua_dummy*:array[SOCK_MAXADDRLEN,char]
+
+
+type un_sockinfo* {.importc:"struct sockaddr_un",header:"<sys/proc_info.h>",incompleteStruct,nodecl.}= object
+    unsi_conn_so*:uint64 # opaque handle of connected socket */
+    unsi_conn_pcb*:uint64 # opaque handle of connected protocol control block */
+    unsi_addr*:union_unsi_caddr
+    unsi_caddr*:union_unsi_caddr
+    # union {
+    # 	struct sockaddr_un	ua_sun;
+    # 	char			ua_dummy[SOCK_MAXADDRLEN];
+    # }					unsi_addr;	# bound address */
+    # union {
+    # 	struct sockaddr_un	ua_sun;
+    # 	char			ua_dummy[SOCK_MAXADDRLEN];
+    # }					unsi_caddr;	# address of socket connected to */
+
+
 type pri*{.importc:"struct pri",header:"<sys/socket.h>",pure.} = object
     pri_in*:in_sockinfo   # SOCKINFO_IN */
     pri_tcp*:tcp_sockinfo # SOCKINFO_TCP */
+    pri_un*: un_sockinfo # SOCKINFO_UN */
+    # pri_ndrv*: ndrv_info # SOCKINFO_NDRV */
+    # pri_kern_event*: kern_event_info # SOCKINFO_KERN_EVENT */
+    # pri_kern_ctl*: kern_ctl_info # SOCKINFO_KERN_CTL */
     hack_to_avoid_copying_more_structs*:array[ 524 ,uint8]
 
 type socket_info*{.importc:"struct socket_info",header:"<sys/socket.h>",pure.} = object
