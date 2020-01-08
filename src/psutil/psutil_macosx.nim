@@ -938,19 +938,21 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
         disk = IOIteratorNext(disk_list)
     IOObjectRelease ( cast[io_registry_entry_t](disk_list))
 
-
+type proc_bsdinfo = object
+    pbi_flags*:uint32
 proc proc_pidinfo( pid:int, flavor:int, arg:uint64, pti:pointer, size:int ): int = 
     errno = 0
     var ret:cint
     var retval:int32
-    ret =  process_info.proc_pidinfo(pid.cint, flavor.cint, arg, pti, size.uint32,retval.addr)
+    ret =  process_info.proc_pidinfo(pid.cint, flavor.cint, arg, pti, size.cint)
     debugEcho "proc_pidinfo",ret,"#",retval
-    if ((ret <= 0) or (ret < sizeof(pti))):
+    if ((ret <= 0) or (cast[culong](ret) < sizeof(pti).culong) ):
+        debugEcho 111
         #    psutil_raise_for_pid(pid, "proc_pidinfo()")
         return 0
     return ret.int
 
-const PSUTIL_CONN_NONE = 128
+const PSUTIL_CONN_NONE = 128.cint
 
 proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
     result = newSeq[Connection]()
@@ -974,6 +976,7 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
         fds_pointer = cast[ptr proc_fdinfo](c_malloc(sizeof(pidinfo_result).c_size_t))
         pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds_pointer, pidinfo_result)
         if (pidinfo_result <= 0):
+            debugEcho "pidinfo_result:$1" % pidinfo_result.intToStr
             discard
             # goto error;
         iterations = pidinfo_result div PROC_PIDLISTFD_SIZE
@@ -983,7 +986,7 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
             
             if fdp_pointer[].proc_fdtype == PROX_FDTYPE_SOCKET:
                 errno = 0
-                nb = proc_pidfdinfo(pid.cint,fdp_pointer[].proc_fd,PROC_PIDFDVNODEPATHINFO,si.addr,sizeof(si).uint32)
+                nb = proc_pidfdinfo(pid.cint,fdp_pointer[].proc_fd,PROC_PIDFDVNODEPATHINFO,si.addr,sizeof(si).cint)
                 if nb <= 0 or nb < sizeof(si):
                     if errno == EBADF:
                         continue
@@ -1083,6 +1086,6 @@ when isMainModule:
     echo per_nic_net_io_counters()
     echo pid_exists(0)
     echo per_disk_io_counters()
-    # echo net_connections(pid = 593) # not finished
+    # echo net_connections(pid = 461) # not finished
     # proc_connections -> net_connections
     # net_if_stats
