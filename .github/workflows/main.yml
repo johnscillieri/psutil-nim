@@ -12,7 +12,9 @@ jobs:
         # only Linux currently supported
         # - macOS-latest
         # - windows-latest
-        nimversion: [stable, devel]
+        nimversion:
+        - stable
+        # - devel
     steps:
     - uses: actions/checkout@v1
     - uses: iffy/install-nim@v1
