@@ -32,8 +32,7 @@ Having a psutil library in Nim seemed like the logical next step.
 
 - ` nimble install psutil`
 
-This package currently only works on Linux.
-This package has some Deprecation warnings but works Ok as of Nim `0.20`. Pull requests welcome.
+This package works Ok as of Nim `1.0.6`. Pull requests welcome.
 
 
 ## Usage
@@ -42,7 +41,7 @@ Just some basic usage below until I get the example apps working and can mirror
 what's in psutil's documentation. Take a look at the scripts folder for some
 basic examples as well.
 
-```
+```nim
 import psutil
 
 echo net_if_addrs()
