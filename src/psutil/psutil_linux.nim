@@ -843,3 +843,12 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
                 result.add( conn )
 
     return result
+
+
+proc isSsd*(diskLetter: char): bool {.inline.} =
+  ## Returns ``true`` if disk is SSD (Solid). Linux only.
+  ##
+  ## .. code-block:: nim
+  ##   echo isSsd('a') ## 'a' for /dev/sda, 'b' for /dev/sdb, ...
+  ##
+  try: readFile("/sys/block/sd" & $diskLetter & "/queue/rotational") == "0\n" except: false
