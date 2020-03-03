@@ -1,5 +1,5 @@
 # Package
-version       = "0.5.7"
+version       = "0.6.0"
 author        = "John Scillieri, Juan Carlos, Nim community"
 description   = "Psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network)"
 license       = "MIT"
