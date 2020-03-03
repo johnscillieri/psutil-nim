@@ -20,23 +20,23 @@ const
 
 
 type proc_fdinfo* {.importc: "struct proc_fdinfo", header: "<sys/proc_info.h>".} = object
-    proc_fdtype*: cint
-    proc_fd*: cint
+  proc_fdtype*: cint
+  proc_fd*: cint
 
 
 type vnode_fdinfowithpath* {.importc: "struct vnode_fdinfowithpath", header: "<sys/proc_info.h>".} = object
 
 
 type proc_fileinfo* = object
-    fi_openflags*: uint32
-    fi_status*: uint32
-    fi_offset*: off_t
-    vip_path*: array[MAXPATHLEN, char]
+  fi_openflags*: uint32
+  fi_status*: uint32
+  fi_offset*: off_t
+  vip_path*: array[MAXPATHLEN, char]
 
 
 type socket_fdinfo* {.importc: "struct socket_fdinfo", header: "<sys/proc_info.h>".} = object
-    pfi*: proc_fileinfo
-    psi*: socket_info
+  pfi*: proc_fileinfo
+  psi*: socket_info
 
 
 # https://opensource.apple.com/source/xnu/xnu-2422.1.72/libsyscall/wrappers/libproc/libproc.h.auto.html
@@ -47,32 +47,32 @@ proc proc_pidfdinfo*(pid: cint, flavor: cint, fd: cint, buffer: pointer, buffer_
 
 
 when isMainModule:
-    var x {.importc: "PROC_PIDLISTFDS", header: "<sys/proc_info.h>".}: cint
-    assert x == PROC_PIDLISTFDS
+  var x {.importc: "PROC_PIDLISTFDS", header: "<sys/proc_info.h>".}: cint
+  assert x == PROC_PIDLISTFDS
 
-    var y {.importc: "PROX_FDTYPE_ATALK", header: "<sys/proc_info.h>".}: cint
-    assert y == PROX_FDTYPE_ATALK
+  var y {.importc: "PROX_FDTYPE_ATALK", header: "<sys/proc_info.h>".}: cint
+  assert y == PROX_FDTYPE_ATALK
 
-    var z {.importc: "PROX_FDTYPE_VNODE", header: "<sys/proc_info.h>".}: cint
-    assert z == PROX_FDTYPE_VNODE
+  var z {.importc: "PROX_FDTYPE_VNODE", header: "<sys/proc_info.h>".}: cint
+  assert z == PROX_FDTYPE_VNODE
 
-    var z1 {.importc: "PROX_FDTYPE_SOCKET", header: "<sys/proc_info.h>".}: cint
-    assert z1 == PROX_FDTYPE_SOCKET
+  var z1 {.importc: "PROX_FDTYPE_SOCKET", header: "<sys/proc_info.h>".}: cint
+  assert z1 == PROX_FDTYPE_SOCKET
 
-    var z2 {.importc: "PROX_FDTYPE_PSHM", header: "<sys/proc_info.h>".}: cint
-    assert z2 == PROX_FDTYPE_PSHM
+  var z2 {.importc: "PROX_FDTYPE_PSHM", header: "<sys/proc_info.h>".}: cint
+  assert z2 == PROX_FDTYPE_PSHM
 
-    var z3 {.importc: "PROX_FDTYPE_PSEM", header: "<sys/proc_info.h>".}: cint
-    assert z3 == PROX_FDTYPE_PSEM
+  var z3 {.importc: "PROX_FDTYPE_PSEM", header: "<sys/proc_info.h>".}: cint
+  assert z3 == PROX_FDTYPE_PSEM
 
-    var z4 {.importc: "PROX_FDTYPE_KQUEUE", header: "<sys/proc_info.h>".}: cint
-    assert z4 == PROX_FDTYPE_KQUEUE
+  var z4 {.importc: "PROX_FDTYPE_KQUEUE", header: "<sys/proc_info.h>".}: cint
+  assert z4 == PROX_FDTYPE_KQUEUE
 
-    var z5 {.importc: "PROX_FDTYPE_PIPE", header: "<sys/proc_info.h>".}: cint
-    assert z5 == PROX_FDTYPE_PIPE
+  var z5 {.importc: "PROX_FDTYPE_PIPE", header: "<sys/proc_info.h>".}: cint
+  assert z5 == PROX_FDTYPE_PIPE
 
-    var z6 {.importc: "PROX_FDTYPE_FSEVENTS", header: "<sys/proc_info.h>".}: cint
-    assert z6 == PROX_FDTYPE_FSEVENTS
+  var z6 {.importc: "PROX_FDTYPE_FSEVENTS", header: "<sys/proc_info.h>".}: cint
+  assert z6 == PROX_FDTYPE_FSEVENTS
 
-    var z7 {.importc: "PROC_PIDFDVNODEPATHINFO", header: "<sys/proc_info.h>".}: cint
-    assert z7 == PROC_PIDFDVNODEPATHINFO
+  var z7 {.importc: "PROC_PIDFDVNODEPATHINFO", header: "<sys/proc_info.h>".}: cint
+  assert z7 == PROC_PIDFDVNODEPATHINFO
