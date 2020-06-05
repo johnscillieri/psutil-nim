@@ -288,7 +288,10 @@ export swap_memory
 export disk_partitions
 export net_io_counters
 export per_nic_net_io_counters
-export net_if_stats
+
 export disk_io_counters
 export per_disk_io_counters
-export net_connections
+
+when not defined(macosx):
+  export net_if_stats
+  export net_connections
