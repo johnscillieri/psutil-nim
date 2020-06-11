@@ -117,7 +117,7 @@ type un_sockinfo* {.importc: "struct sockaddr_un", header: "<sys/proc_info.h>", 
   # }					unsi_caddr;	# address of socket connected to */
 
 
-type pri*{.importc: "struct pri", header: "<sys/socket.h>", pure.} = object
+type pri* = object
   pri_in*: in_sockinfo   # SOCKINFO_IN */
   pri_tcp*: tcp_sockinfo # SOCKINFO_TCP */
   pri_un*: un_sockinfo   # SOCKINFO_UN */
@@ -127,7 +127,7 @@ type pri*{.importc: "struct pri", header: "<sys/socket.h>", pure.} = object
   hack_to_avoid_copying_more_structs*: array[524, uint8]
 
 
-type socket_info* {.importc: "struct socket_info", header: "<sys/socket.h>", pure.} = object
+type socket_info* {.importc: "struct socket_info", header: "<sys/proc_info.h>".} = object
   soi_stat*: vinfo_stat
   soi_so*: uint64    # opaque handle of socket 
   soi_pcb*: uint64   # opaque handle of protocol control block 
