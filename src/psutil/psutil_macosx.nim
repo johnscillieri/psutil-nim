@@ -1,10 +1,9 @@
 import posix, segfaults, tables, psutil_posix, nativesockets
 import times except Time
 import common
-import strutils
+import strutils,sequtils
 import ./arch/osx/process_info
 import ./arch/osx/socket
-
 include "system/ansi_c"
 
 template offset*[T](p: ptr T, count: int): ptr T =
@@ -940,7 +939,8 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
 
 type proc_bsdinfo = object
     pbi_flags*:uint32
-proc proc_pidinfo( pid:int, flavor:int, arg:uint64, pti:pointer, size:int ): int = 
+
+proc proc_pidinfo( pid:int, flavor:int, arg:uint64, pti:pointer, size:int ): cint = 
     errno = 0
     var ret:cint
     var retval:int32
@@ -950,123 +950,123 @@ proc proc_pidinfo( pid:int, flavor:int, arg:uint64, pti:pointer, size:int ): int
         debugEcho 111
         #    psutil_raise_for_pid(pid, "proc_pidinfo()")
         return 0
-    return ret.int
+    return ret.cint
 
 const PSUTIL_CONN_NONE = 128.cint
 
-
-# Commented out, see https://github.com/johnscillieri/psutil-nim/pull/5#issuecomment-593675677
-#
-# proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
-#     result = newSeq[Connection]()
-#     var 
-#         pidinfo_result:int
-#         iterations:int
-#         i:int
-#         fds_pointer:ptr  proc_fdinfo
-#         fdp_pointer:ptr  proc_fdinfo
-#         si: socket_fdinfo 
-#         nb:cint
-#         laddr:cstring
-#         raddr:cstring
-#     if pid == 0:
-#         return result
-#     elif pid == -1:
-#         discard
-#     else:
-#         pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-#         fds_pointer = cast[ptr proc_fdinfo](c_malloc(sizeof(pidinfo_result).c_size_t))
-#         pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds_pointer, pidinfo_result)
-#         if (pidinfo_result <= 0):
-#             debugEcho "pidinfo_result:$1" % pidinfo_result.intToStr
-#             discard
-#             # goto error;
-#         iterations = pidinfo_result div PROC_PIDLISTFD_SIZE
-#         debugEcho "iterations",pidinfo_result
-#         while i < iterations:
-#             fdp_pointer = cast[ptr UnCheckedArray[ proc_fdinfo]](fds_pointer)[i].addr
-#             if fdp_pointer[].proc_fdtype == PROX_FDTYPE_SOCKET:
-#                 errno = 0
-#                 nb = proc_pidfdinfo(pid.cint,fdp_pointer[].proc_fd,PROC_PIDFDVNODEPATHINFO,si.addr,sizeof(si).cint)
-#                 if nb <= 0 or nb < sizeof(si):
-#                     if errno == EBADF:
-#                         continue
-#                     else:
-#                         discard
-#                         # psutil_raise_for_pid(   pid, "proc_pidinfo(PROC_PIDFDSOCKETINFO)");
-#                         # goto error;
-#                 var 
-#                     fd, family, typ, lport, rport, state:cint
-#                     lip,rip:array[200,char]
-#                     inseq:cint
-#                 fd = fdp_pointer[].proc_fd
-#                 family = si.psi.soi_family
-#                 typ = si.psi.soi_type
-#                 # apply filters
-#                 # py_family = PyLong_FromLong((long)family);
-#                 # inseq = PySequence_Contains(py_af_filter, py_family);
-#                 # Py_DECREF(py_family);
-#                 # if (inseq == 0)
-#                 #     continue;
-#                 # py_type = PyLong_FromLong((long)type);
-#                 # inseq = PySequence_Contains(py_type_filter, py_type);
-#                 # Py_DECREF(py_type);             
-#                 if inseq == 0:
-#                     continue
-#                 if errno != 0:
-#                     discard
-#                     # PyErr_SetFromErrno(PyExc_OSError);
-#                     # goto error;
-#                 if family == posix.AF_INET or family == posix.AF_INET6:
-#                     if (family == posix.AF_INET) :
-#                         discard inet_ntop(posix.AF_INET,
-#                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_46.i46a_addr4.addr,
-#                                 cast[cstring](lip.addr),
-#                                 sizeof(lip).int32)
-#                         discard inet_ntop(posix.AF_INET,
-#                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_46.i46a_addr4.addr,
-#                                 cast[cstring](rip.addr),
-#                                 sizeof(rip).int32)
-#                     else:
-#                         discard inet_ntop(posix.AF_INET6,
-#                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_6.addr,
-#                                 cast[cstring](lip.addr),
-#                                 sizeof(lip).int32
-#                                 )
-#                         discard inet_ntop(posix.AF_INET6,
-#                                 si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_6.addr,
-#                                 cast[cstring](rip.addr),
-#                                 sizeof(rip).int32
-#                                 )
-#                     if (errno != 0) :
-#                         discard
-#                         # PyErr_SetFromOSErrnoWithSyscall("inet_ntop()");
-#                         # goto error;
-#                     lport = posix.ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport.uint16).cint
-#                     rport = posix.ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_fport.uint16).cint
-#                     if (typ == posix.SOCK_STREAM):
-#                         state = cast[cint](si.psi.soi_proto.pri_tcp.tcpsi_state)
-#                     else:
-#                         state = PSUTIL_CONN_NONE
-#                 elif (family == posix.AF_UNIX):
-#                     laddr = cast[cstring](si.psi.soi_proto.pri_un.unsi_addr.ua_sun.sun_path.addr)
-#                     if not isNil(laddr):
-#                         discard
-#                         # goto error;
-#                     raddr = cast[cstring](si.psi.soi_proto.pri_un.unsi_caddr.ua_sun.sun_path.addr)
-#                     if not isNil(raddr):
-#                         discard
-#                         # goto error;
-#                 result.add Connection(fd:fd,
-#                     family: family,
-#                     type: typ,
-#                     laddr: $laddr,
-#                     lport: Port(lport),
-#                     raddr: $raddr,
-#                     rport: Port(rport),
-#                     status: $state,
-#                     pid:pid)
-#     cfree(fds_pointer)
+proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
+    result = newSeq[Connection]()
+    var 
+        pidinfo_result:int
+        iterations:int
+        i:int
+        fds_pointer:ptr  proc_fdinfo
+        fdp_pointer:ptr  proc_fdinfo
+        si: socket_fdinfo 
+        nb:cint
+        laddr:cstring
+        raddr:cstring
+    if pid == 0:
+        return result
+    elif pid == -1:
+        discard
+    else:
+        pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        fds_pointer = cast[ptr proc_fdinfo](c_malloc(sizeof(pidinfo_result).c_size_t))
+        pidinfo_result = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds_pointer, pidinfo_result)
+        if (pidinfo_result <= 0):
+            discard
+            # goto error;
+        iterations = pidinfo_result div PROC_PIDLISTFD_SIZE
+        while i < iterations:
+            fdp_pointer = cast[ptr UnCheckedArray[ proc_fdinfo]](fds_pointer)[i].addr
+            if fdp_pointer[].proc_fdtype == PROX_FDTYPE_SOCKET:
+                errno = 0
+                nb = proc_pidfdinfo(pid.cint,fdp_pointer[].proc_fd,PROC_PIDFDSOCKETINFO,cast[pointer](si.addr),sizeof(si).cint)
+                if nb <= 0 or nb < sizeof(si):
+                    if errno == EBADF:
+                        continue
+                        
+                    else:
+                        debugEcho "proc_pidfdinfo error"
+                        discard
+                        # psutil_raise_for_pid(   pid, "proc_pidinfo(PROC_PIDFDSOCKETINFO)");
+                        # goto error;
+                var 
+                    fd, family, typ, lport, rport, state:cint
+                    lip,rip:array[200,char]
+                    inseq:cint
+                fd = fdp_pointer[].proc_fd
+                family = si.psi.soi_family
+                typ = si.psi.soi_type
+                # apply filters
+                # py_family = PyLong_FromLong((long)family);
+                # inseq = PySequence_Contains(py_af_filter, py_family);
+                # Py_DECREF(py_family);
+                # if (inseq == 0)
+                #     continue;
+                # py_type = PyLong_FromLong((long)type);
+                # inseq = PySequence_Contains(py_type_filter, py_type);
+                # Py_DECREF(py_type);             
+                # if inseq == 0:
+                #     continue
+                if errno != 0:
+                    discard
+                    # PyErr_SetFromErrno(PyExc_OSError);
+                    # goto error;
+                if family == posix.AF_INET or family == posix.AF_INET6:
+                    if (family == posix.AF_INET) :
+                        discard inet_ntop(posix.AF_INET,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_46.i46a_addr4.addr,
+                                cast[cstring](lip.addr),
+                                sizeof(lip).int32)
+                        discard inet_ntop(posix.AF_INET,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_46.i46a_addr4.addr,
+                                cast[cstring](rip.addr),
+                                sizeof(rip).int32)
+                    else:
+                        discard inet_ntop(posix.AF_INET6,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_6.addr,
+                                cast[cstring](lip.addr),
+                                sizeof(lip).int32
+                                )
+                        discard inet_ntop(posix.AF_INET6,
+                                si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_6.addr,
+                                cast[cstring](rip.addr),
+                                sizeof(rip).int32
+                                )
+                    if (errno != 0) :
+                        discard
+                        # PyErr_SetFromOSErrnoWithSyscall("inet_ntop()");
+                        # goto error;
+                    debugEcho si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport,233
+                    lport = posix.ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport.uint16).cint
+                    rport = posix.ntohs(si.psi.soi_proto.pri_tcp.tcpsi_ini.insi_fport.uint16).cint
+                    if (typ == posix.SOCK_STREAM):
+                        state = cast[cint](si.psi.soi_proto.pri_tcp.tcpsi_state)
+                    else:
+                        state = PSUTIL_CONN_NONE
+                elif (family == posix.AF_UNIX):
+                    laddr = cast[cstring](si.psi.soi_proto.pri_un.unsi_addr.ua_sun.sun_path.addr)
+                    if not isNil(laddr):
+                        discard
+                        # goto error;
+                    debugEcho si.psi.soi_proto.pri_un.unsi_caddr.ua_sun.sun_path,444
+                    raddr = cast[cstring](si.psi.soi_proto.pri_un.unsi_caddr.ua_sun.sun_path.addr)
+                    if not isNil(raddr):
+                        discard
+                        # goto error;
+                result.add Connection(fd:fd,
+                    family: family,
+                    type: typ,
+                    laddr: $laddr,
+                    lport: Port(lport),
+                    raddr: $raddr,
+                    rport: Port(rport),
+                    status: $state,
+                    pid:pid)
+            inc i
+    cfree(fds_pointer)
 
 
 when isMainModule:
@@ -1085,6 +1085,6 @@ when isMainModule:
     echo per_nic_net_io_counters()
     echo pid_exists(0)
     echo per_disk_io_counters()
-    # echo net_connections(pid = 461) # TODO: Not finished.
+    echo net_connections()
     # proc_connections -> net_connections
-    # net_if_stats
+    # echo net_if_stats()

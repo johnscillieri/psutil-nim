@@ -17,9 +17,10 @@ const
   PROX_FDTYPE_PIPE* = 6.cint
   PROX_FDTYPE_FSEVENTS* = 7.cint
   PROC_PIDFDVNODEPATHINFO* = 2.cint
+  PROC_PIDFDSOCKETINFO* = 3.cint
 
 
-type proc_fdinfo* {.importc: "struct proc_fdinfo", header: "<sys/proc_info.h>".} = object
+type proc_fdinfo* {.importc: "struct proc_fdinfo", header: "<sys/proc_info.h>",pure.} = object
   proc_fdtype*: cint
   proc_fd*: cint
 
@@ -27,14 +28,14 @@ type proc_fdinfo* {.importc: "struct proc_fdinfo", header: "<sys/proc_info.h>".}
 type vnode_fdinfowithpath* {.importc: "struct vnode_fdinfowithpath", header: "<sys/proc_info.h>".} = object
 
 
-type proc_fileinfo* = object
+type proc_fileinfo* {.importc: "struct proc_fileinfo", header: "<sys/proc_info.h>",pure.} = object
   fi_openflags*: uint32
   fi_status*: uint32
   fi_offset*: off_t
-  vip_path*: array[MAXPATHLEN, char]
+  fi_guardflags*: uint32
 
 
-type socket_fdinfo* {.importc: "struct socket_fdinfo", header: "<sys/proc_info.h>".} = object
+type socket_fdinfo* {.importc: "struct socket_fdinfo", header: "<sys/proc_info.h>",pure.} = object
   pfi*: proc_fileinfo
   psi*: socket_info
 
