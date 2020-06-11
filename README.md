@@ -5,7 +5,7 @@
 ![](https://img.shields.io/github/languages/top/juancarlospaco/psutil-nim?style=for-the-badge)
 ![](https://img.shields.io/github/languages/count/juancarlospaco/psutil-nim?logoColor=green&style=for-the-badge)
 ![](https://img.shields.io/github/stars/juancarlospaco/psutil-nim?style=for-the-badge "Star psutil-nim on GitHub!")
-![](https://img.shields.io/maintenance/yes/2019?style=for-the-badge "2019")
+![](https://img.shields.io/maintenance/yes/2020?style=for-the-badge)
 ![](https://img.shields.io/github/languages/code-size/juancarlospaco/psutil-nim?style=for-the-badge)
 ![](https://img.shields.io/github/issues-raw/juancarlospaco/psutil-nim?style=for-the-badge "Bugs")
 ![](https://img.shields.io/github/issues-pr-raw/juancarlospaco/psutil-nim?style=for-the-badge "PRs")
