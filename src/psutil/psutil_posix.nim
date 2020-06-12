@@ -1,6 +1,9 @@
 import posix, strutils, tables
 import common
 
+const bsdPlatform = defined(macosx) or defined(freebsd) or
+                    defined(netbsd) or defined(openbsd) or
+                    defined(dragonfly)
 
 const IFHWADDRLEN* = 6
 const IF_NAMESIZE* = 16
@@ -9,10 +12,17 @@ const IFNAMSIZ* = IF_NAMESIZE
 var AF_PACKET* {.header: "<sys/socket.h>".}: cint
 var IFF_BROADCAST* {.header: "<net/if.h>".}: uint
 var IFF_POINTOPOINT* {.header: "<net/if.h>".}: uint
-var IFF_UP {.header: "<linux/if.h>".}: uint
+
 var NI_MAXHOST* {.header: "<net/if.h>".}: cint
-var SIOCGIFFLAGS {.header: "<linux/sockios.h>".}: uint
-var SIOCGIFMTU {.header: "<linux/sockios.h>".}: uint
+when bsdPlatform:
+    var IFF_UP {.header: "<net/if.h>".}: uint
+    var SIOCGIFFLAGS {.header: "<sys/sockio.h>".}: uint
+    var SIOCGIFMTU {.header: "<sys/sockio.h>".}: uint
+
+else:
+    var IFF_UP {.header: "<linux/if.h>".}: uint
+    var SIOCGIFFLAGS {.header: "<linux/sockios.h>".}: uint
+    var SIOCGIFMTU {.header: "<linux/sockios.h>".}: uint
 
 type ifaddrs = object
     pifaddrs: ptr ifaddrs # Next item in list
@@ -256,3 +266,62 @@ proc net_if_flags*( name: string ): bool =
         result = (ifr.ifr_ifru.ifru_flags and IFF_UP.cshort) != 0
     else:
         result = false
+
+##
+# net_if_stats() macOS/BSD implementation.
+##
+
+when bsdPlatform:
+    {.compile: "arch/bsd_osx.c".}
+    # import segfaults
+    import system / ansi_c
+    proc psutil_get_nic_speed*(ifm_active:cint):cint {.importc: "psutil_get_nic_speed".}
+
+    type ifmediareq {.importc: "struct ifmediareq", header: "<net/if.h>",
+            nodecl,pure.} = object
+        ifm_name*:array[IFNAMSIZ,char]  # if name, e.g. "en0"
+        ifm_current:cint    # current media options
+        ifm_mask:cint    # don't care mask 
+        ifm_status:cint    # media status 
+        ifm_active:cint    # active options 
+        ifm_count:cint    # entries in ifm_ulist array 
+        ifm_ulist:ptr cint    # media words 
+
+    const SIOCGIFMEDIA = 0xc0286938'u32
+    const IFM_FDX = 0x00100000'u32
+    const IFM_HDX = 2097152'u32
+
+    proc net_if_duplex_speed*( nic_name: string ):tuple[ duplex: NicDuplex, speed: int ] =
+        var
+            sock:int = -1
+            ret:int
+            duplex:int
+            speed:int
+            ifr:ifreq
+            ifmed:ifmediareq
+
+        sock = socket(AF_INET, SOCK_DGRAM, 0).cint
+        # if (sock == -1)
+        #     return PyErr_SetFromErrno(PyExc_OSError);
+        # PSUTIL_STRNCPY(ifr.ifr_name, nic_name, sizeof(ifr.ifr_name));
+        # https://github.com/giampaolo/psutil/blob/9efb453e7163690c82226be3440cd8cb6bdffb5b/psutil/_psutil_common.h#L19
+        copyMem(ifmed.ifm_name.addr,nic_name.cstring,sizeof(ifr.ifr_ifrn.ifrn_name) - 1)
+        ifmed.ifm_name[sizeof(ifr.ifr_ifrn.ifrn_name) - 1] = '\0'
+        # speed / duplex
+        c_memset(cast[pointer](ifmed.addr), 0, sizeof( ifmediareq).csize_t);
+        # strlcpy(ifmed.ifm_name, nic_name, sizeof(ifmed.ifm_name));
+        copyMem(ifmed.ifm_name.addr,nic_name.cstring,sizeof(ifmed.ifm_name))
+        ret = ioctl(sock.FileHandle, SIOCGIFMEDIA, ifmed.addr)
+        if ret == -1:
+            speed = 0
+            duplex = 0
+        else:
+            speed = psutil_get_nic_speed(ifmed.ifm_active)
+            if ((ifmed.ifm_active or IFM_FDX.cint) == ifmed.ifm_active):
+                duplex = 2
+            elif ((ifmed.ifm_active or IFM_HDX.cint) == ifmed.ifm_active):
+                duplex = 1
+            else:
+                duplex = 0
+        discard close(sock.SocketHandle)
+        return  (duplex.NicDuplex, speed)
