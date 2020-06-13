@@ -300,7 +300,7 @@ when bsdPlatform:
             ifr:ifreq
             ifmed:ifmediareq
 
-        sock = socket(AF_INET, SOCK_DGRAM, 0).cint
+        sock = socket(posix.AF_INET, posix.SOCK_DGRAM, 0).int
         # if (sock == -1)
         #     return PyErr_SetFromErrno(PyExc_OSError);
         # PSUTIL_STRNCPY(ifr.ifr_name, nic_name, sizeof(ifr.ifr_name));
@@ -313,6 +313,7 @@ when bsdPlatform:
         copyMem(ifmed.ifm_name.addr,nic_name.cstring,sizeof(ifmed.ifm_name))
         ret = ioctl(sock.FileHandle, SIOCGIFMEDIA, ifmed.addr)
         if ret == -1:
+            debugEcho ret
             speed = 0
             duplex = 0
         else:
