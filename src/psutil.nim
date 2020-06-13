@@ -291,7 +291,5 @@ export per_nic_net_io_counters
 
 export disk_io_counters
 export per_disk_io_counters
-
-when not defined(macosx):
-  export net_if_stats
-  export net_connections
+export net_if_stats
+export net_connections

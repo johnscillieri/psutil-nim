@@ -4,6 +4,7 @@ import common
 import strutils,sequtils
 import ./arch/osx/process_info
 import ./arch/osx/socket
+import psutil_posix
 include "system/ansi_c"
 
 template offset*[T](p: ptr T, count: int): ptr T =
@@ -1068,6 +1069,17 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
             inc i
     cfree(fds_pointer)
 
+proc net_if_stats*(): TableRef[string, NICstats] =
+    ## Get NIC stats (isup, duplex, speed, mtu).
+    let names = toSeq( per_nic_net_io_counters().keys() )
+    result = newTable[string, NICStats]()
+    for name in names:
+        let (duplex, speed) = net_if_duplex_speed( name )
+        result[name] = NICStats( isup:net_if_flags( name ),
+                                 duplex:duplex,
+                                 speed:speed,
+                                 mtu:net_if_mtu( name ) )
+
 
 when isMainModule:
     echo boot_time()
@@ -1087,4 +1099,4 @@ when isMainModule:
     echo per_disk_io_counters()
     echo net_connections()
     # proc_connections -> net_connections
-    # echo net_if_stats()
+    echo net_if_stats()
