@@ -152,10 +152,21 @@ proc uptime*(): int =
   ## Return the system uptime expressed in seconds, Integer type.
   epochTime().int - boot_time()
 
+proc isnumder(s : string): bool =
+    #[
+        function for check if string is a number
+    ]#
+    for c in s:
+        if isdigit(c) == false:
+            return false
+
+    return true
+
 proc pids*(): seq[int] =
     ## Returns a list of PIDs currently running on the system.
     let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
-    return mapIt( filterIt( all_files, isdigit( it.path ) ), parseInt( it.path ) )
+
+    return mapIt( filterIt( all_files, isnumder(it.path) ), parseInt( it.path ) )
 
 
 proc pid_exists*( pid: int ): bool =
