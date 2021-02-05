@@ -209,8 +209,7 @@ proc disk_usage*(path: string): DiskUsage =
     var st: Statvfs
     let ret_code = statvfs(path, st)
     if ret_code == -1:
-        echo( "disk_usage error: ", strerror( errno ) )
-        return
+        raise newException(OSError, "disk_usage error: $1" % [$strerror( errno )] )
 
     # Total space which is only available to root (unless changed at system level).
     let total = (st.f_blocks * st.f_frsize)
@@ -326,3 +325,4 @@ when bsdPlatform:
                 duplex = 0
         discard close(sock.SocketHandle)
         return  (duplex.NicDuplex, speed)
+
