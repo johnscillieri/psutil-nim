@@ -15,6 +15,11 @@ var AF_PACKET* = -1
 const LO_T = 1e-7
 const HI_T = 429.4967296
 
+# Make some constants for process architecture
+const PROCESS_ARCH_UNKNOWN* = 0 # architecture is unknown
+const PROCESS_ARCH_X86* = 1     # architecture is 32 bit
+const PROCESS_ARCH_X64* = 2     # architecture is 64 bit
+
 # The last 3 fields are unexposed traditionally so this has the potential
 # to break in the future, but this is how psutil does it too. 
 type SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION* {.pure.} = object
@@ -40,7 +45,7 @@ proc raiseError() =
     raise newException( OSError, "ERROR ($1): $2" % [$error_code, $error_message] )
 
 
-proc psutil_get_drive_type( drive_type: UINT ): string =
+proc psutil_get_drive_type*( drive_type: UINT ): string =
     case drive_type
         of DRIVE_FIXED: "fixed"
         of DRIVE_CDROM: "cdrom"
@@ -51,6 +56,51 @@ proc psutil_get_drive_type( drive_type: UINT ): string =
         of DRIVE_RAMDISK: "ramdisk"
         else: "?"
 
+proc psutil_get_drive_type*(drive: string): string =
+
+    var drive_type = GetDriveTypeA(cast[LPCSTR](drive))
+    case drive_type
+        of DRIVE_FIXED: "fixed"
+        of DRIVE_CDROM: "cdrom"
+        of DRIVE_REMOVABLE: "removable"
+        of DRIVE_UNKNOWN: "unknown"
+        of DRIVE_NO_ROOT_DIR: "unmounted"
+        of DRIVE_REMOTE: "remote"
+        of DRIVE_RAMDISK: "ramdisk"
+        else: "?"
+
+proc getnativearch*(): int =
+    ## Get the native architecture of the system we are running on
+    var pGetNativeSystemInfo: SYSTEM_INFO
+    var nativeArch = PROCESS_ARCH_UNKNOWN
+
+    GetNativeSystemInfo(pGetNativeSystemInfo.addr)
+
+    if pGetNativeSystemInfo.isNil:
+        raiseError()
+
+    
+    case pGetNativeSystemInfo.union1.struct1.wProcessorArchitecture
+        of PROCESSOR_ARCHITECTURE_AMD64:
+            ## 64 bit (x64)
+            # dwNativeArch = PROCESSOR_ARCHITECTURE_AMD64
+            nativeArch = PROCESS_ARCH_X64
+        
+        of PROCESSOR_ARCHITECTURE_IA64:
+            # dwNativeArch = PROCESSOR_ARCHITECTURE_IA64
+            nativeArch = PROCESS_ARCH_X64
+                            
+        of PROCESSOR_ARCHITECTURE_INTEL:
+            # 32 bit (x86)
+            # dwNativeArch = PROCESSOR_ARCHITECTURE_INTEL
+            nativeArch = PROCESS_ARCH_X64
+            
+        else:
+            # dwNativeArch  = PROCESSOR_ARCHITECTURE_UNKNOWN
+            nativeArch = PROCESS_ARCH_UNKNOWN
+
+    return nativeArch
+            
 
 proc pids*(): seq[int] = 
     ## Returns a list of PIDs currently running on the system.
@@ -76,6 +126,413 @@ proc pids*(): seq[int] =
     for i in 0..<numberOfReturnedPIDs:
         result.add( procArray[i].int )
 
+proc pid_name*(processID: int): string =
+
+    #[
+        function for getting the process name of pid
+    ]#
+    var szProcessName: array[MAX_PATH, TCHAR]
+    
+    # szProcessName[0] = cast[TCHAR]("")
+
+    #  Get a handle to the process.
+
+    var hProcess = OpenProcess( cast[DWORD](PROCESS_QUERY_INFORMATION or PROCESS_VM_READ), FALSE, cast[DWORD](processID) )
+
+    #  Get the process name.
+
+    if hProcess.addr != nil:
+
+        var hMod: HMODULE
+        var cbNeeded: DWORD
+
+        if EnumProcessModules( hProcess, hMod.addr, cast[DWORD](sizeof(hMod)), cbNeeded.addr):
+
+            GetModuleBaseName( hProcess, hMod, szProcessName, 
+                               cast[DWORD](szProcessName.len) )
+
+    else:
+        CloseHandle(hProcess)
+        raiseError()
+
+    # Release the handle to the process.
+
+    CloseHandle( hProcess )
+
+    # return the process name
+    var ret: string
+    for c in szProcessName:
+        if cast[char](c) == '\0':
+            break
+
+        ret.add(cast[char](c))
+        
+    return ret
+
+proc pid_names*(pids: seq[int]): seq[string] =
+
+    #[
+        function for getting the process name of pid
+    ]#
+    var ret: seq[string]
+    for pid in pids:
+        ret.add(pid_name(pid))
+
+    return ret
+
+proc pid_path*(pid: int): string =
+
+    var processHandle: HANDLE
+    var filename: array[MAX_PATH, char]
+    var dwSize = MAX_PATH
+
+    processHandle = OpenProcess(cast[DWORD](PROCESS_QUERY_INFORMATION or PROCESS_VM_READ), FALSE, 
+        cast[DWORD](pid))
+    defer: CloseHandle(processHandle)
+
+    if processHandle.addr != nil or processHandle == cast[HANDLE](1) or processHandle == cast[HANDLE](NULL):
+
+        if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), filename, cast[PDWORD](dwSize.addr)) == FALSE:
+            
+            raiseError()
+
+        else:
+
+            var ret: string
+            for c in filename:
+                if cast[char](c) == '\0':
+                    break
+
+                ret.add(cast[char](c))
+            
+            return ret
+
+    else:
+
+        raiseError()
+
+proc pid_paths*(pids: seq[int]): seq[string] = 
+
+    var ret: seq[string]
+    for pid in pids:
+        ret.add(pid_path(pid))
+
+    return ret
+
+proc try_pid_path*(pid: int): string =
+
+    var processHandle: HANDLE
+    var filename: array[MAX_PATH, char]
+    var dwSize = MAX_PATH
+
+    processHandle = OpenProcess(cast[DWORD](PROCESS_QUERY_INFORMATION or PROCESS_VM_READ), FALSE, 
+        cast[DWORD](pid))
+    defer: CloseHandle(processHandle)
+
+    if processHandle.addr != nil or processHandle == cast[HANDLE](1) or processHandle == cast[HANDLE](NULL):
+
+        if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), filename, cast[PDWORD](dwSize.addr)) == FALSE:
+            
+            result = ""
+
+        else:
+
+            var ret: string
+            for c in filename:
+                if cast[char](c) == '\0':
+                    break
+
+                ret.add(cast[char](c))
+            
+            return ret
+
+    else:
+
+        result = ""
+
+proc try_pid_paths*(pids: seq[int]): seq[string] =
+
+    ## Function to return the paths of the exes (sequence of strings) of the running pids.
+    for pid in pids:
+        result.add(try_pid_path(pid)) 
+
+proc pid_parent*(pid: int): int =
+
+    var h: HANDLE
+    var pe: PROCESSENTRY32
+    var ppid = cast[DWORD](0)
+    pe.dwSize = cast[DWORD](sizeof(PROCESSENTRY32))
+    h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if Process32First(h, pe.addr):
+        while Process32Next(h, pe.addr):
+            if cast[int](pe.th32ParentProcessID) == pid:
+                ppid = pe.th32ParentProcessID
+                break
+    
+    CloseHandle(h);
+    return cast[int](ppid)
+
+proc pid_parents*(pids: seq[int]): seq[int] =
+
+    var ret: seq[int]
+    for pid in pids:
+        ret.add(pid_parent(pid))
+
+    return ret
+
+proc pids_with_names*(): (seq[int], seq[string]) =
+
+    ## Function for returning tuple of pids and names
+    
+    var pids_seq = pids()
+    var names_seq = pid_names(pids_seq)
+
+    return (pids_seq, names_seq)
+
+
+proc pid_arch*(pid: int) : int =
+
+    ## function for getting the architecture of the pid running
+    var bIsWow64: BOOL
+    var nativeArch = static PROCESS_ARCH_UNKNOWN
+    var hProcess: HANDLE
+    # var pIsWow64Process: ISWOW64PROCESS
+    var dwPid = cast[DWORD](pid)
+    # now we must default to an unknown architecture as the process may be either x86/x64 and we may not have the rights to open it
+    result = PROCESS_ARCH_UNKNOWN
+
+    ## grab the native systems architecture the first time we use this function we use this funciton.
+    if nativeArch == PROCESS_ARCH_UNKNOWN:
+        nativeArch = getnativearch()
+
+   
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwPid)
+    defer: CloseHandle(hProcess)
+    if hProcess == cast[HANDLE](-1):
+        hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, dwPid)
+        if hProcess == cast[HANDLE](-1):
+            raiseError()
+
+    if IsWow64Process(hProcess, bIsWow64.addr) == FALSE:
+        return
+
+    if bIsWow64:
+        result = PROCESS_ARCH_X86
+    else:
+        result = nativeArch
+    
+proc pid_user*(pid: int): string =
+
+    ## Attempt to get the username associated with the given pid.
+    var hProcess: HANDLE
+    var hToken: HANDLE
+    var pUser: TOKEN_USER
+    var peUse: SID_NAME_USE
+    var dwUserLength = cast[DWORD](512)
+    var dwDomainLength = cast[DWORD](0)
+    var dwLength: DWORD
+    var dwPid = cast[DWORD](pid)
+    var wcUser: array[512, TCHAR]
+    var wcDomain: array[512, TCHAR]
+
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwPid)
+    defer: CloseHandle(hProcess)
+    if hProcess == cast[DWORD](-1) or hProcess == cast[DWORD](NULL):
+        raiseError()
+
+    if OpenProcessToken(hProcess, TOKEN_QUERY, cast[PHANDLE](hToken.addr)) == FALSE:
+        raiseError()
+
+    defer: CloseHandle(hToken)
+
+    if hToken == cast[HANDLE](-1) or hToken == cast[HANDLE](NULL):
+        raiseError()
+
+    ## Get required buffer size and allocate the TOKEN_USER buffer
+    GetTokenInformation(hToken, tokenUser, cast[LPVOID](pUser.addr), cast[DWORD](0), cast[PDWORD](dwLength.addr))
+
+    GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr))
+
+    
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+        raiseError()
+
+    let user = wcUser[0..^1]
+    var retu: string
+    for c in user:
+        if cast[char](c) != '\0': 
+            retu.add(cast[char](c)) 
+        else: 
+            break
+
+    return retu
+
+proc pid_users*(pids: seq[int]): seq[string] =
+
+    ## Function for getting a sequence of users
+    for pid in pids:
+        result.add(pid_user(pid))
+
+
+proc try_pid_user*(pid: int): string =
+
+    ## Attempt to get the username associated with the given pid.
+    var hProcess: HANDLE
+    var hToken: HANDLE
+    var pUser: TOKEN_USER
+    var peUse: SID_NAME_USE
+    var dwUserLength = cast[DWORD](512)
+    var dwDomainLength = cast[DWORD](0)
+    var dwLength: DWORD
+    var dwPid = cast[DWORD](pid)
+    var wcUser: array[512, TCHAR]
+    var wcDomain: array[512, TCHAR]
+
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwPid)
+    defer: CloseHandle(hProcess)
+    if hProcess == cast[DWORD](-1) or hProcess == cast[DWORD](NULL):
+        return ""
+
+    if OpenProcessToken(hProcess, TOKEN_QUERY, cast[PHANDLE](hToken.addr)) == FALSE:
+        return ""
+
+    defer: CloseHandle(hToken)
+
+    if hToken == cast[HANDLE](-1) or hToken == cast[HANDLE](NULL):
+        return ""
+
+    ## Get required buffer size and allocate the TOKEN_USER buffer
+    GetTokenInformation(hToken, tokenUser, cast[LPVOID](pUser.addr), cast[DWORD](0), cast[PDWORD](dwLength.addr))
+
+    GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr))
+
+    
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+        return ""
+
+    let user = wcUser[0..^1]
+    var retu: string
+    for c in user:
+        if cast[char](c) != '\0': 
+            retu.add(cast[char](c)) 
+        else: 
+            break
+
+    return retu
+
+
+proc try_pid_users*(pids: seq[int]): seq[string] =
+
+    ## Function for getting users of specified pids
+    for pid in pids:
+        result.add(try_pid_user(pid))
+
+proc pid_domain*(pid: int): string =
+
+    ## Attempt to get the domain associated with the given pid.
+    var hProcess: HANDLE
+    var hToken: HANDLE
+    var pUser: TOKEN_USER
+    var peUse: SID_NAME_USE
+    var dwUserLength = cast[DWORD](512)
+    var dwDomainLength = cast[DWORD](512)
+    var dwLength: DWORD
+    var dwPid = cast[DWORD](pid)
+    var wcUser: array[512, TCHAR]
+    var wcDomain: array[512, TCHAR]
+
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwPid)
+    defer: CloseHandle(hProcess)
+    if hProcess == cast[DWORD](-1) or hProcess == cast[DWORD](NULL):
+        raiseError()
+
+    if OpenProcessToken(hProcess, TOKEN_QUERY, cast[PHANDLE](hToken.addr)) == FALSE:
+        raiseError()
+
+    defer: CloseHandle(hToken)
+
+    if hToken == cast[HANDLE](-1) or hToken == cast[HANDLE](NULL):
+        raiseError()
+
+    ## Get required buffer size and allocate the TOKEN_USER buffer
+    GetTokenInformation(hToken, tokenUser, cast[LPVOID](pUser.addr), cast[DWORD](0), cast[PDWORD](dwLength.addr))
+
+    GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr)) 
+    
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+        raiseError()
+
+    let domain = wcDomain[0..^1]
+    var retd: string
+    for c in domain:
+
+        if cast[char](c) != '\0': 
+            retd.add(cast[char](c)) 
+        else: 
+            break
+
+    return retd
+
+
+proc pid_domain_user*(pid: int): (string, string) =
+
+    ## Attempt to get the domain and username associated with the given pid.
+    var hProcess: HANDLE
+    var hToken: HANDLE
+    var pUser: TOKEN_USER
+    var peUse: SID_NAME_USE
+    var dwUserLength = cast[DWORD](512)
+    var dwDomainLength = cast[DWORD](512)
+    var dwLength: DWORD
+    var dwPid = cast[DWORD](pid)
+    var wcUser: array[512, TCHAR]
+    var wcDomain: array[512, TCHAR]
+
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwPid)
+    defer: CloseHandle(hProcess)
+    if hProcess == cast[DWORD](-1) or hProcess == cast[DWORD](NULL):
+        raiseError()
+
+    if OpenProcessToken(hProcess, TOKEN_QUERY, cast[PHANDLE](hToken.addr)) == FALSE:
+        raiseError()
+
+    defer: CloseHandle(hToken)
+
+    if hToken == cast[HANDLE](-1) or hToken == cast[HANDLE](NULL):
+        raiseError()
+
+    ## Get required buffer size and allocate the TOKEN_USER buffer
+    GetTokenInformation(hToken, tokenUser, cast[LPVOID](pUser.addr), cast[DWORD](0), cast[PDWORD](dwLength.addr)) #== FALSE:
+        # raiseError()
+
+    GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr)) #== FALSE:
+        # raiseError()
+    
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+        raiseError()
+
+    let user = wcUser[0..^1]
+    var retu: string
+    for c in user:
+
+        if cast[char](c) != '\0': 
+            retu.add(cast[char](c)) 
+        else: 
+            break
+
+    let domain = wcDomain[0..^1]
+    var retd: string
+    for c in domain:
+        if cast[char](c) != '\0':
+            retd.add(cast[char](c))
+        else:
+            break
+
+    return (retd, retu)
 
 proc disk_partitions*( all=false ): seq[DiskPartition] =
     result = newSeq[DiskPartition]()
@@ -194,7 +651,7 @@ proc toUnixTime(ft: FILETIME): float =
     # The time_t is a 32-bit value for the number of seconds since
     # January 1, 1970. A FILETIME is a 64-bit for the number of
     # 100-nanosecond periods since January 1, 1601. Convert by
-    # subtracting the number of 100-nanosecond period betwee 01-01-1970
+    # subtracting the number of 100-nanosecond period between 01-01-1970
     # and 01-01-1601, from time_t then divide by 1e+7 to get to the same
     # base granularity.
     let ll = (int64(ft.dwHighDateTime) shl 32) + int64(ft.dwLowDateTime)
@@ -254,7 +711,8 @@ proc per_cpu_times*(): seq[CPUTimes] =
 
 
 proc cpu_times*(): CPUTimes = 
-    ## Retrieves system CPU timing information . On a multiprocessor system, the values returned are the
+    ## Retrieves system CPU timing information . On a multiprocessor system, 
+    ## the values returned are the
     ## sum of the designated times across all processors.
 
     var idle_time: FILETIME
@@ -281,7 +739,7 @@ proc cpu_times*(): CPUTimes =
 
 
 proc cpu_count_logical*(): int = 
-    GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)
+    return cast[int](GetActiveProcessorCount(ALL_PROCESSOR_GROUPS))
 
 
 proc cpu_count_physical*(): int = 
@@ -497,6 +955,39 @@ proc per_disk_io_counters*(): TableRef[string, DiskIO] =
 proc per_nic_net_io_counters*(): TableRef[string, NetIO] = 
     raise newException( Exception, "Function is unimplemented!")
 
-proc pid_exists*( pid: int ): bool = 
+proc process_exists*(processName: string): bool =
+
+    var exists = false
+    var entry: PROCESSENTRY32
+    entry.dwSize = cast[DWORD](PROCESSENTRY32.sizeof)
+
+    var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+
+    if Process32First(snapshot, entry.addr):
+        while Process32Next(snapshot, entry.addr):
+            var name: string
+            for c in entry.szExeFile:
+                if cast[char](c) == '\0':
+                    break
+
+                name.add(cast[char](c))
+            
+            if name == processName:
+                exists = true
+
+    CloseHandle(snapshot)
+    return exists
+
+proc pid_exists*(pid: int): bool =
+
+    var p = OpenProcess(SYNCHRONIZE, FALSE, cast[DWORD](pid));
+    var r = WaitForSingleObject(p, 0);
+    CloseHandle(p);
+    return r == WAIT_TIMEOUT
+
+
+
+proc pid_cmdline*(pid: int): string = 
     raise newException( Exception, "Function is unimplemented!")
+    
 

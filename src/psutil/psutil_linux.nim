@@ -1,5 +1,6 @@
+{.deadCodeElim: on.} 
 import algorithm, math, net, os, posix, sequtils, sets, strutils, tables, times
-
+import strformat
 import common, psutil_posix
 
 
@@ -10,6 +11,7 @@ const UT_LINESIZE = 32
 const UT_NAMESIZE = 32
 const UT_HOSTSIZE = 256
 const USER_PROCESS = 7  # Normal process.
+const PATH_MAX = 4096
 
 var MOUNTED {.header: "<mntent.h>".}: cstring
 var DUPLEX_FULL {.header: "<linux/ethtool.h>".}: uint8
@@ -128,7 +130,6 @@ type ethtool_cmd = object
     lp_advertising*: uint32
     reserved*: array[2, uint32]
 
-
 ################################################################################
 proc getutent(): ptr utmp {.header: "<utmp.h>".}
 proc setutent() {.header: "<utmp.h>".}
@@ -137,7 +138,8 @@ proc sysinfo(info: var SysInfo): cint {.header: "<sys/sysinfo.h>".}
 proc setmntent(filename: cstring, `type`: cstring): File {.header: "<mntent.h>".}
 proc getmntent(stream: File): mntent {.header: "<mntent.h>".}
 proc endmntent(streamp: File): int {.header: "<mntent.h>".}
-
+proc readlink(path: cstring, buf: array, bufsiz: int): int {.header: "<unistd.h>".}
+proc getpwuid(uid: int): ptr Passwd {.header: "<pwd.h>".}
 
 proc boot_time*(): int =
     ## Return the system boot time expressed in seconds since the epoch, Integer type.
@@ -152,16 +154,27 @@ proc uptime*(): int =
   ## Return the system uptime expressed in seconds, Integer type.
   epochTime().int - boot_time()
 
+proc isnumber(s : string): bool =
+    #[
+        function for check if string is a number
+    ]#
+    for c in s:
+        if isdigit(c) == false:
+            return false
+
+    return true
+
 proc pids*(): seq[int] =
     ## Returns a list of PIDs currently running on the system.
     let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
-    return mapIt( filterIt( all_files, isdigit( it.path ) ), parseInt( it.path ) )
+
+    return mapIt( filterIt( all_files, isnumber(it.path) ), parseInt( it.path ) )
 
 
 proc pid_exists*( pid: int ): bool =
     ## Check For the existence of a unix pid
 
-    let exists = psutil_posix.pid_exists( pid )
+    let exists = psutilim_posix.pid_exists( pid )
     if not exists: return false
 
     try:
@@ -177,6 +190,155 @@ proc pid_exists*( pid: int ): bool =
     except:
         return pid in pids()
 
+proc pid_cmdline*(pid: int): string =
+
+    ## Function for getting the cmdline of a pid
+    ## this gets path of command and arguments
+    
+    let cmdline_path = PROCFS_PATH / $pid / "cmdline"
+    return cmdline_path.readFile()
+
+proc pids_cmdline*(pids: seq[int]): seq[string] =
+
+    ## function for getting the cmdline of a sequence of pids
+    ## this gets path of command and arguments
+    var ret: seq[string]
+    for pid in pids:
+        ret.add(pid_cmdline(pid))
+
+proc pid_name*(pid: int): string =
+    ## Function for getting the process name of a pid
+    ## not to be mixed with pid_cmdline. This only gets the 
+    ## program name. Not the path and arguments
+    let p_path = PROCFS_PATH / $pid / "status"
+    var data = p_path.readFile()
+    for line in data.split("\n"):
+        if "Name:" in line:
+            var name = line.split("Name:")[1].strip()
+            result = name
+
+
+proc pid_names*(pids: seq[int]): seq[string] =
+    ## Function for getting the process name of a sequence of pids
+    ## not to be mmixed with pids_cmdline. This only gets the 
+    ## program name. Not the path and arguments.
+    var ret: seq[string]
+    for pid in pids:
+        ret.add(pid_name(pid))
+
+    return ret
+
+proc pid_path*(pid: int): string = 
+
+    ## Function for getting the path of the elf of the running pid
+    var p_path: cstring = PROCFS_PATH / $pid / "exe"
+    var buf: array[PATH_MAX, char]
+    if readlink(p_path, buf, PATH_MAX) == -1:
+        raise newException(IOError, "Cannot read /proc/$1/exe | $2" % [$pid, $strerror(errno)])
+    for c in buf:
+        if c != '\0': result.add(c) else: break
+
+proc try_pid_path*(pid: int): string =
+
+    ## Function for getting the path of the elf of the running pid
+    ## Note: Instead of raising an error. It will instread return ""
+    var p_path: cstring = PROCFS_PATH / $pid / "exe"
+    var buf: array[PATH_MAX, char]
+    if readlink(p_path, buf, PATH_MAX) == -1:
+        result = ""
+    else:
+        for c in buf:
+            if c != '\0': result.add(c) else: break
+
+
+proc pid_paths*(pids: seq[int]): seq[string] =
+
+    ## Function for getting the elf paths of the specified pids
+    for pid in pids:
+        result.add(pid_path(pid))
+
+
+proc try_pid_paths*(pids: seq[int]): seq[string] =
+    
+    ## Function for getting the paths of the specified pids
+    ## Note: If an error occurs for any of the pids. The result for the corresponding
+    ## pid will be ""
+    for pid in pids:
+        result.add(try_pid_path(pid))
+        
+proc pid_user*(pid: int): string =
+    
+    ## Function for getting the username running the specified pid
+    var p_path = PROCFS_PATH / $pid / "status"
+    var uid = -1
+    var data = p_path.readFile()
+    for line in data.split("\n"):
+        if "Uid:" in line:
+            uid = parseInt(line.split("Uid:")[1].strip().split("\t")[0])
+
+    var pws = getpwuid(cast[Uid](uid))
+    if pws.isNil:
+        raise newException(OSError, "UID $1 not found" % [$uid])
+    result = $pws.pw_name
+
+proc try_pid_user*(pid: int): string =
+    
+    ## Function for getting the username running the specified pid
+    var p_path = PROCFS_PATH / $pid / "status"
+    var uid = -1
+    var data = p_path.readFile()
+    for line in data.split("\n"):
+        if "Uid:" in line:
+            uid = parseInt(line.split("Uid:")[1].strip().split("\t")[0])
+        
+    var pws = getpwuid(cast[Uid](uid))
+    if pws.isNil:
+        result = ""
+    else:
+        result = $pws.pw_name
+
+proc pid_users*(pids: seq[int]): seq[string] =
+
+    for pid in pids:
+        result.add(pid_user(pid))
+
+proc try_pid_users*(pids: seq[int]): seq[string] =
+
+    for pid in pids:
+        result.add(try_pid_user(pid))
+
+proc pid_parent*(pid: int): int =
+    
+    ## Function for getting the parent pid of the specified pid
+    var p_path = PROCFS_PATH / $pid / "status"
+    var data = p_path.readFile()
+    for line in data.split("\n"):
+        if "PPid:" in line:
+            result = parseInt(line.split("PPid:")[^1].strip())
+
+proc pid_parents*(pids: seq[int]): seq[int] =
+
+    ## Function for getting the parent pids of the corresponding pids specified.
+    for pid in pids:
+        result.add(pid_parent(pid))
+
+proc process_exists*(processName: string): bool =
+
+    let names_seq = pid_names(pids())
+    for name in names_seq:
+        if processName == name:
+            return true
+
+    return false
+
+proc pids_with_names*(): (seq[int], seq[string]) =
+
+    ## Function for returning tuple of pids and names
+    
+    var pids_seq = pids()
+    var names_seq = pid_names(pids_seq)
+
+    return (pids_seq, names_seq)
 
 proc users*(): seq[User] =
     result = newSeq[User]()
@@ -207,19 +369,19 @@ proc parse_cpu_time_line(text: string): CPUTimes =
     let values = text.strip.splitWhitespace()
     let times = mapIt(values[1..len(values) - 1], parseFloat(it) / CLOCK_TICKS.float)
     if len(times) >= 7:
-        result.user = round(times[0], 2)
-        result.nice = round(times[1], 2)
-        result.system = round(times[2], 2)
-        result.idle = round(times[3], 2)
-        result.iowait = round(times[4], 2)
-        result.irq = round(times[5], 2)
-        result.softirq = round(times[6], 2)
+        result.user = parseFloat(fmt"{times[0]:.2f}")
+        result.nice = parseFloat(fmt"{times[1]:.2f}")
+        result.system = parseFloat(fmt"{times[2]:.2f}")
+        result.idle = parseFloat(fmt"{times[3]:.2f}")
+        result.iowait = parseFloat(fmt"{times[4]:.2f}")
+        result.irq = parseFloat(fmt"{times[5]:.2f}")
+        result.softirq = parseFloat(fmt"{times[6]:.2f}")
     if len(times) >= 8:
-        result.steal = round(times[7], 2)
+        result.steal = parseFloat(fmt"{times[7]:.2f}")
     if len(times) >= 9:
-        result.guest = round(times[8], 2)
+        result.guest = parseFloat(fmt"{times[8]:.2f}")
     if len(times) >= 10:
-        result.guest_nice = round(times[9], 2)
+        result.guest_nice = parseFloat(fmt"{times[9]:.2f}")
 
 
 proc cpu_times*(): CPUTimes =
@@ -843,3 +1005,4 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
                 result.add( conn )
 
     return result
+

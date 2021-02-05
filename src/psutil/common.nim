@@ -29,6 +29,7 @@ type CPUTimes* = object of RootObj
         steal*: float
         guest*: float
         guest_nice*: float
+    
 
 type DiskUsage* = object of RootObj
     total*: int
