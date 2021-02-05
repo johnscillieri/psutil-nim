@@ -17,7 +17,7 @@ proc vmstat(stat: string): int =
 
 test "test boot time":
     let vmstat_value = vmstat("boot time")
-    let psutil_value = psutilim.boot_time()
+    let psutil_value = psutil.boot_time()
     check( vmstat_value == int(psutil_value) )
 
 
