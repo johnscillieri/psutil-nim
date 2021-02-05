@@ -167,7 +167,6 @@ proc isnumber(s : string): bool =
 proc pids*(): seq[int] =
     ## Returns a list of PIDs currently running on the system.
     let all_files = toSeq( walkDir(PROCFS_PATH, relative=true) )
-
     return mapIt( filterIt( all_files, isnumber(it.path) ), parseInt( it.path ) )
 
 
@@ -1005,4 +1004,13 @@ proc net_connections*( kind= "inet", pid= -1 ): seq[Connection] =
                 result.add( conn )
 
     return result
+
+
+proc isSsd*(diskLetter: char): bool {.inline.} =
+  ## Returns ``true`` if disk is SSD (Solid). Linux only.
+  ##
+  ## .. code-block:: nim
+  ##   echo isSsd('a') ## 'a' for /dev/sda, 'b' for /dev/sdb, ...
+  ##
+  try: readFile("/sys/block/sd" & $diskLetter & "/queue/rotational") == "0\n" except: false
 

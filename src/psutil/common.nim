@@ -89,7 +89,8 @@ type DiskIO* = object of RootObj
     write_bytes*: int
     read_time*: int
     write_time*: int
-    when defined(linux):
+    when defined(linux) or defined(macosx):
+        reads_merged*: int
         read_merged_count*: int
         write_merged_count*: int
         busy_time*: int
@@ -106,14 +107,13 @@ type Connection* = object of RootObj
     pid*: int
 
 
-################################################################################
-proc usage_percent*[T](used: T, total: T, places=0): float =
-    ## Calculate percentage usage of 'used' against 'total'.
-    try:
-        result = (used.int / total.int) * 100
-    except DivByZeroError:
-        result = if used is float or total is float: 0.0 else: 0
-    if places != 0:
-        return round(result, places)
-    else:
-        return result
+proc usage_percent*[T](used: T, total: T, places = 0): float =
+  ## Calculate percentage usage of 'used' against 'total'.
+  try:
+    result = (used.int / total.int) * 100
+  except DivByZeroError:
+    result = if used is float or total is float: 0.0 else: 0
+  if places != 0:
+    return round(result, places)
+  else:
+    return result

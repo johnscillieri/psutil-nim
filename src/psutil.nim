@@ -21,7 +21,8 @@ when defined(linux):
 when defined(windows):
   import psutil/psutil_windows as platform
 
-
+when defined(macosx):
+  import psutil/psutil_macosx as platform
 ################################################################################
 var g_last_cpu_times: CPUTimes
 var g_last_per_cpu_times: seq[CPUTimes]
@@ -287,7 +288,8 @@ export swap_memory
 export disk_partitions
 export net_io_counters
 export per_nic_net_io_counters
-export net_if_stats
+
 export disk_io_counters
 export per_disk_io_counters
+export net_if_stats
 export net_connections
