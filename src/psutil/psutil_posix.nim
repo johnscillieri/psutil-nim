@@ -199,8 +199,7 @@ proc disk_usage*(path: string): DiskUsage =
     var st: Statvfs
     let ret_code = statvfs(path, st)
     if ret_code == -1:
-        echo( "disk_usage error: ", strerror( errno ) )
-        return
+        raise newException(OSError, "disk_usage error: $1" % [$strerror( errno )] )
 
     # Total space which is only available to root (unless changed at system level).
     let total = (st.f_blocks * st.f_frsize)
@@ -256,3 +255,4 @@ proc net_if_flags*( name: string ): bool =
         result = (ifr.ifr_ifru.ifru_flags and IFF_UP.cshort) != 0
     else:
         result = false
+
