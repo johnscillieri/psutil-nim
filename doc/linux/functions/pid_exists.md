@@ -7,7 +7,7 @@ pid_exists returns a boolean which is true if the given pid (integer) exists on 
 proc pid_exists*( pid: int ): bool =
     ## Check For the existence of a unix pid
 
-    let exists = psutilim_posix.pid_exists( pid )
+    let exists = psutil_posix.pid_exists( pid )
     if not exists: return false
 
     try:
