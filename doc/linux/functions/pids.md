@@ -2,7 +2,7 @@
 
 pids returns a sequence of integers (PIDs) currently running on the system
 
-Note: isnumber is defined in psutilim_linux.nim
+Note: isnumber is defined in psutil_linux.nim
 
 # The function
 ```nim
