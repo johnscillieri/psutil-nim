@@ -173,7 +173,7 @@ proc pids*(): seq[int] =
 proc pid_exists*( pid: int ): bool =
     ## Check For the existence of a unix pid
 
-    let exists = psutilim_posix.pid_exists( pid )
+    let exists = psutil_posix.pid_exists( pid )
     if not exists: return false
 
     try:
