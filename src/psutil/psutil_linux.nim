@@ -903,7 +903,7 @@ iterator process_inet( file: string, family: int, socketType: int, inodes : Orde
 
     for line in file.lines:
         try:
-            let strings = line.splitWhitespace()[..10]
+            let strings = line.splitWhitespace()[0..10]
             laddr = strings[1]
             raddr = strings[2]
             status = strings[3]
