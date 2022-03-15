@@ -706,7 +706,7 @@ proc per_nic_net_io_counters*(): TableRef[string, NetIO] =
     for line in lines( PROCFS_PATH / "net/dev" ):
         if not( ":" in line ): continue
         let colon = line.rfind(':')
-        let name = line[..colon].strip()
+        let name = line[0..colon].strip()
         let lst = line[(colon + 1)..len(line) - 1].strip.replace("\x00", "").splitWhitespace
         let fields = mapIt(lst, parseInt(it))
 
