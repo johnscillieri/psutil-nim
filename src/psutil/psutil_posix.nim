@@ -42,10 +42,10 @@ type
     port*: char              ## # 3 bytes spare
 
 type
-  INNER_C_UNION_9261176668105079294* = object {.union.}
+  INNER_C_UNION_9261176668105079294* {.union.} = object
     ifrn_name*: array[IFNAMSIZ, char] ## # Interface name, e.g. "en0".
 
-  INNER_C_UNION_7660000764852079517* = object {.union.}
+  INNER_C_UNION_7660000764852079517* {.union.} = object 
     ifru_addr*: SockAddr
     ifru_dstaddr*: SockAddr
     ifru_broadaddr*: SockAddr
