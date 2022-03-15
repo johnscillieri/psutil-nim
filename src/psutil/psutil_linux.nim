@@ -644,7 +644,7 @@ proc swap_memory*(): SwapMemory =
                          percent:percent, sin:0, sout:0 )
 
     # try to get pgin/pgouts
-    if not existsFile( PROCFS_PATH / "vmstat" ):
+    if not fileExists( PROCFS_PATH / "vmstat" ):
         # see https://github.com/giampaolo/psutil/issues/722
         echo( "'sin' and 'sout' swap memory stats couldn't be determined ",
               "and were set to 0" )
