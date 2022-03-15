@@ -1,6 +1,6 @@
-# disk_partions
+# disk_partitions
 
-This function returns a type DiskUsage.
+This function returns a sequence of type DiskPartition.
 
 # The function
 ```nim
@@ -41,4 +41,4 @@ proc disk_partitions*(all=false): seq[DiskPartition] =
 
 # The type
 
-- [DiskUsage](../types/DiskUsage.md)
+- [DiskPartition](../types/DiskPartition.md)
