@@ -69,14 +69,6 @@ proc disk_partitions*( all=false ): seq[DiskPartition] =
         discard SetErrorMode( 0 )
 ```
 
-# Type DiskPartition
+# The type
 
-```nim
-type DiskPartition* = object of RootObj
-    device*: string
-    mountpoint*: string
-    fstype*: string
-    opts*: string
-
-```
-
+- [DiskPartition](../types/DiskPartition.md)
