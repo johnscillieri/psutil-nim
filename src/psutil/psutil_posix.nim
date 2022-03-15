@@ -37,9 +37,9 @@ type
     mem_start*: culong
     mem_end*: culong
     base_addr*: cushort
-    irq*: cuchar
-    dma*: cuchar
-    port*: cuchar              ## # 3 bytes spare
+    irq*: char
+    dma*: char
+    port*: char              ## # 3 bytes spare
 
 type
   INNER_C_UNION_9261176668105079294* = object {.union.}
