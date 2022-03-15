@@ -156,7 +156,7 @@ proc psutil_convert_ipaddr(address: ptr SockAddr, family: posix.TSa_Family): str
         else:
             addrlen = sizeof(SockAddr_in6).uint32
 
-        let err = getnameinfo( address, addrlen, result, resultLen, nil, 0, NI_NUMERICHOST )
+        let err = getnameinfo( address, addrlen, cast[cstring](result), resultLen, nil, 0, NI_NUMERICHOST )
         if err != 0:
             # // XXX we get here on FreeBSD when processing 'lo' / AF_INET6
             # // broadcast. Not sure what to do other than returning None.
