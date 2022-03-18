@@ -53,6 +53,10 @@ proc pid_exists*( pid: int ): bool =
     else:
         return platform.pid_exists(pid)
 
+proc pid_kill*(pid: int) = 
+    ## Function for killing specified pid
+    ## will raise OSError on error
+    platform.pid_kill(pid)
 
 proc cpu_count*(logical=true): int =
     # Return the number of logical CPUs in the system.
@@ -278,6 +282,7 @@ export boot_time
 export uptime
 export users
 export pids
+export pid_kill
 export cpu_times
 export per_cpu_times
 export cpu_stats
@@ -291,3 +296,6 @@ export net_if_stats
 export disk_io_counters
 export per_disk_io_counters
 export net_connections
+
+# export the platform for access to all the procedures
+export platform

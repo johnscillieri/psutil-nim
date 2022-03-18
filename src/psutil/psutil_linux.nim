@@ -207,13 +207,11 @@ proc pids_cmdline*(pids: seq[int]): seq[string] =
     for pid in pids:
         ret.add(pid_cmdline(pid))
 
-# TODO: add pid_kill function here
 proc pid_kill*(pid: int) =
-
+    ## Function for sending a kill signal to the specified pid 
     if not pid_exists(pid):
         raise newException(OSError, "PID " & $(pid) & " doesn't exist")
 
-    ## Function for sending a kill signal to the specified pid
     var temp: Pid = int32(pid)
 
     try: 
