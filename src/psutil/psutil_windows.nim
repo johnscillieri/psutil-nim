@@ -990,4 +990,19 @@ proc pid_exists*(pid: int): bool =
 proc pid_cmdline*(pid: int): string = 
     raise newException( Exception, "Function is unimplemented!")
     
+proc pid_kill*(pid: int) = 
+    
+    ## Function for killing the specified pid
+    ## will check if pid exists, and if not raises OSError
+    ## if the pid does exist, then will attempt to OpenProcess
+    if not pid_exists(pid):
+        raise newException(OSError, "PID " & $(pid) & " doesn't exist")
 
+    var handle = OpenProcess(0x001F0FFF, FALSE, cast[DWORD](pid))
+    if handle == 0:
+        raise newException(OSError, $(GetLastError()))
+
+    if TerminateProcess(handle, 0):
+        return
+    else:
+        raise newException(OSError, $(GetLastError()))
