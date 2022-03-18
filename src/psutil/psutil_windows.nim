@@ -126,6 +126,7 @@ proc pids*(): seq[int] =
     for i in 0..<numberOfReturnedPIDs:
         result.add( procArray[i].int )
 
+
 proc pid_name*(processID: int): string =
 
     #[
@@ -190,6 +191,9 @@ proc pid_path*(pid: int): string =
         cast[DWORD](pid))
     defer: CloseHandle(processHandle)
 
+    if processHandle == cast[HANDLE](-1):
+        raiseError()
+
     if processHandle.addr != nil or processHandle == cast[HANDLE](1) or processHandle == cast[HANDLE](NULL):
 
         if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), cast[LPSTR](filename.addr), cast[PDWORD](dwSize.addr)) == FALSE:
@@ -228,6 +232,9 @@ proc try_pid_path*(pid: int): string =
     processHandle = OpenProcess(cast[DWORD](PROCESS_QUERY_INFORMATION or PROCESS_VM_READ), FALSE, 
         cast[DWORD](pid))
     defer: CloseHandle(processHandle)
+
+    if processHandle == cast[HANDLE](-1):
+        raiseError()
 
     if processHandle.addr != nil or processHandle == cast[HANDLE](1) or processHandle == cast[HANDLE](NULL):
 
@@ -308,6 +315,7 @@ proc pid_arch*(pid: int) : int =
    
     hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwPid)
     defer: CloseHandle(hProcess)
+
     if hProcess == cast[HANDLE](-1):
         hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, dwPid)
         if hProcess == cast[HANDLE](-1):
@@ -979,10 +987,16 @@ proc process_exists*(processName: string): bool =
     return exists
 
 proc pid_exists*(pid: int): bool =
+    ## Function to check if specified pid exists
+    ## will attempt to open the specified pid, and
+    ## check if the return of WaitForSingleObject is equal to WAIT_TIMEOUT
+    var handle = OpenProcess(SYNCHRONIZE, FALSE, cast[DWORD](pid));
+    defer: CloseHandle(handle)
 
-    var p = OpenProcess(SYNCHRONIZE, FALSE, cast[DWORD](pid));
-    var r = WaitForSingleObject(p, 0);
-    CloseHandle(p);
+    if handle == cast[HANDLE](-1):
+        raiseError()
+
+    var r = WaitForSingleObject(handle, 0);
     return r == WAIT_TIMEOUT
 
 
@@ -999,10 +1013,12 @@ proc pid_kill*(pid: int) =
         raise newException(OSError, "PID " & $(pid) & " doesn't exist")
 
     var handle = OpenProcess(0x001F0FFF, FALSE, cast[DWORD](pid))
-    if handle == 0:
-        raise newException(OSError, $(GetLastError()))
+    defer: CloseHandle(handle)
+
+    if handle == cast[HANDLE](-1):
+        raiseError()
 
     if TerminateProcess(handle, 0):
         return
     else:
-        raise newException(OSError, $(GetLastError()))
+        raiseError()
