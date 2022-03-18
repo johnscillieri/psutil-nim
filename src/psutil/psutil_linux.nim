@@ -2,7 +2,8 @@
 import algorithm, math, net, os, posix, sequtils, sets, strutils, tables, times
 import strformat
 import common, psutil_posix
-
+from posix_utils import sendSignal
+from posix import Pid, SIGKILL
 
 ################################################################################
 const PROCFS_PATH = "/proc"
@@ -205,6 +206,22 @@ proc pids_cmdline*(pids: seq[int]): seq[string] =
     var ret: seq[string]
     for pid in pids:
         ret.add(pid_cmdline(pid))
+
+# TODO: add pid_kill function here
+proc pid_kill*(pid: int) =
+
+    if not pid_exists(pid):
+        raise newException(OSError, "PID " & $(pid) & " doesn't exist")
+
+    ## Function for sending a kill signal to the specified pid
+    var temp: Pid = int32(pid)
+
+    try: 
+        sendSignal(temp, SIGKILL)
+    except OSError:
+        raise getCurrentException()
+
+
 
 proc pid_name*(pid: int): string =
     ## Function for getting the process name of a pid
