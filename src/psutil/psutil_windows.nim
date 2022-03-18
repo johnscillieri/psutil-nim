@@ -148,7 +148,7 @@ proc pid_name*(processID: int): string =
 
         if EnumProcessModules( hProcess, hMod.addr, cast[DWORD](sizeof(hMod)), cbNeeded.addr):
 
-            GetModuleBaseName( hProcess, hMod, szProcessName, 
+            GetModuleBaseName( hProcess, hMod, cast[LPWSTR](szProcessName.addr), 
                                cast[DWORD](szProcessName.len) )
 
     else:
@@ -192,7 +192,7 @@ proc pid_path*(pid: int): string =
 
     if processHandle.addr != nil or processHandle == cast[HANDLE](1) or processHandle == cast[HANDLE](NULL):
 
-        if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), filename, cast[PDWORD](dwSize.addr)) == FALSE:
+        if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), cast[LPSTR](filename.addr), cast[PDWORD](dwSize.addr)) == FALSE:
             
             raiseError()
 
@@ -231,7 +231,7 @@ proc try_pid_path*(pid: int): string =
 
     if processHandle.addr != nil or processHandle == cast[HANDLE](1) or processHandle == cast[HANDLE](NULL):
 
-        if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), filename, cast[PDWORD](dwSize.addr)) == FALSE:
+        if QueryFullProcessImageNameA(processHandle, cast[DWORD](0), cast[LPSTR](filename.addr), cast[PDWORD](dwSize.addr)) == FALSE:
             
             result = ""
 
@@ -355,7 +355,7 @@ proc pid_user*(pid: int): string =
     GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr))
 
     
-    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, cast[LPWSTR](wcUser.addr), dwUserLength.addr, cast[LPWSTR](wcDomain.addr), dwDomainLength.addr, peUse.addr) == FALSE:
         raiseError()
 
     let user = wcUser[0..^1]
@@ -409,7 +409,7 @@ proc try_pid_user*(pid: int): string =
     GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr))
 
     
-    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, cast[LPWSTR](wcUser.addr), dwUserLength.addr, cast[LPWSTR](wcDomain.addr), dwDomainLength.addr, peUse.addr) == FALSE:
         return ""
 
     let user = wcUser[0..^1]
@@ -462,7 +462,7 @@ proc pid_domain*(pid: int): string =
 
     GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr)) 
     
-    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, cast[LPWSTR](wcUser.addr), dwUserLength.addr, cast[LPWSTR](wcDomain.addr), dwDomainLength.addr, peUse.addr) == FALSE:
         raiseError()
 
     let domain = wcDomain[0..^1]
@@ -512,7 +512,7 @@ proc pid_domain_user*(pid: int): (string, string) =
     GetTokenInformation(hToken, tokenUser, pUser.addr, cast[DWORD](dwLength), cast[PDWORD](dwLength.addr)) #== FALSE:
         # raiseError()
     
-    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, wcUser, dwUserLength.addr, wcDomain, dwDomainLength.addr, peUse.addr) == FALSE:
+    if LookupAccountSidW(cast[LPCWSTR](NULL), pUser.User.Sid, cast[LPWSTR](wcUser.addr), dwUserLength.addr, cast[LPWSTR](wcDomain.addr), dwDomainLength.addr, peUse.addr) == FALSE:
         raiseError()
 
     let user = wcUser[0..^1]
